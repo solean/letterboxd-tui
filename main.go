@@ -28,6 +28,24 @@ type DiaryEntry struct {
 	Review  bool
 }
 
+type Profile struct {
+	Stats     []ProfileStat
+	Favorites []FavoriteFilm
+	Recent    []string
+}
+
+type ProfileStat struct {
+	Label string
+	Value string
+	URL   string
+}
+
+type FavoriteFilm struct {
+	Title   string
+	FilmURL string
+	Year    string
+}
+
 type ActivityItem struct {
 	Summary string
 	When    string
@@ -40,10 +58,13 @@ type ActivityItem struct {
 type tab int
 
 const (
-	tabDiary tab = iota
+	tabProfile tab = iota
+	tabDiary
 	tabFollowing
 	tabActivity
 )
+
+const tabCount = 4
 
 type listState struct {
 	selected int
@@ -56,9 +77,11 @@ type model struct {
 	width       int
 	height      int
 	activeTab   tab
+	profile     Profile
 	diary       []DiaryEntry
 	activity    []ActivityItem
 	following   []ActivityItem
+	profileErr  error
 	diaryErr    error
 	activityErr error
 	followErr   error
@@ -71,6 +94,11 @@ type model struct {
 type diaryMsg struct {
 	items []DiaryEntry
 	err   error
+}
+
+type profileMsg struct {
+	profile Profile
+	err     error
 }
 
 type activityMsg struct {
@@ -94,7 +122,7 @@ func main() {
 		username:  *username,
 		cookie:    cookie,
 		client:    client,
-		activeTab: tabDiary,
+		activeTab: tabProfile,
 		loading:   true,
 	}
 
@@ -126,10 +154,23 @@ func loadCookie() (string, error) {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
+		fetchProfileCmd(m.client, m.username, m.cookie),
 		fetchDiaryCmd(m.client, m.username, m.cookie),
 		fetchActivityCmd(m.client, m.username, m.cookie, tabActivity),
 		fetchActivityCmd(m.client, m.username, m.cookie, tabFollowing),
 	)
+}
+
+func fetchProfileCmd(client *http.Client, username, cookie string) tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/%s/", baseURL, username)
+		doc, err := fetchDocument(client, url, cookie)
+		if err != nil {
+			return profileMsg{err: err}
+		}
+		profile, err := parseProfile(doc)
+		return profileMsg{profile: profile, err: err}
+	}
 }
 
 func fetchDiaryCmd(client *http.Client, username, cookie string) tea.Cmd {
@@ -194,9 +235,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "tab", "right":
-			m.activeTab = (m.activeTab + 1) % 3
+			m.activeTab = (m.activeTab + 1) % tabCount
 		case "left", "shift+tab":
-			m.activeTab = (m.activeTab + 2) % 3
+			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
 		case "j", "down":
 			m.moveSelection(1)
 		case "k", "up":
@@ -204,11 +245,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			return m, tea.Batch(
+				fetchProfileCmd(m.client, m.username, m.cookie),
 				fetchDiaryCmd(m.client, m.username, m.cookie),
 				fetchActivityCmd(m.client, m.username, m.cookie, tabActivity),
 				fetchActivityCmd(m.client, m.username, m.cookie, tabFollowing),
 			)
 		}
+	case profileMsg:
+		m.profile = msg.profile
+		m.profileErr = msg.err
+		m.loading = false
 	case diaryMsg:
 		m.diary = msg.items
 		m.diaryErr = msg.err
@@ -266,6 +312,8 @@ func (m model) View() string {
 
 	var body string
 	switch m.activeTab {
+	case tabProfile:
+		body = renderProfile(m, theme)
 	case tabDiary:
 		body = renderDiary(m, theme)
 	case tabActivity:
@@ -307,7 +355,7 @@ func newTheme() themeStyles {
 }
 
 func renderTabs(m model, theme themeStyles) string {
-	tabs := []string{"Diary", "Friends", "My Activity"}
+	tabs := []string{"Profile", "Diary", "Friends", "My Activity"}
 	var out []string
 	for i, label := range tabs {
 		if tab(i) == m.activeTab {
@@ -317,6 +365,44 @@ func renderTabs(m model, theme themeStyles) string {
 		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, out...)
+}
+
+func renderProfile(m model, theme themeStyles) string {
+	if m.profileErr != nil {
+		return theme.dim.Render("Error: " + m.profileErr.Error())
+	}
+	if m.loading && len(m.profile.Stats) == 0 && len(m.profile.Favorites) == 0 {
+		return theme.dim.Render("Loading profile…")
+	}
+	var rows []string
+	if len(m.profile.Stats) > 0 {
+		rows = append(rows, theme.subtle.Render("Stats"))
+		for _, stat := range m.profile.Stats {
+			line := fmt.Sprintf("%s %s", theme.badge.Render(stat.Value), stat.Label)
+			rows = append(rows, theme.item.Render(line))
+		}
+	}
+	if len(m.profile.Favorites) > 0 {
+		rows = append(rows, "", theme.subtle.Render("Top 4 Films"))
+		for i, fav := range m.profile.Favorites {
+			prefix := fmt.Sprintf("%d.", i+1)
+			title := fav.Title
+			if fav.Year != "" {
+				title = fmt.Sprintf("%s (%s)", fav.Title, fav.Year)
+			}
+			rows = append(rows, theme.item.Render(fmt.Sprintf("%s %s", prefix, title)))
+		}
+	}
+	if len(m.profile.Recent) > 0 {
+		rows = append(rows, "", theme.subtle.Render("Recently Watched"))
+		for _, line := range m.profile.Recent {
+			rows = append(rows, theme.item.Render(line))
+		}
+	}
+	if len(rows) == 0 {
+		return theme.dim.Render("No profile data found.")
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func renderDiary(m model, theme themeStyles) string {
@@ -484,6 +570,59 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 		})
 	})
 	return items, nil
+}
+
+func parseProfile(doc *goquery.Document) (Profile, error) {
+	var profile Profile
+	doc.Find(".profile-stats .profile-statistic").Each(func(_ int, stat *goquery.Selection) {
+		value := strings.TrimSpace(stat.Find(".value").First().Text())
+		label := strings.TrimSpace(stat.Find(".definition").First().Text())
+		url, _ := stat.Find("a").First().Attr("href")
+		if url != "" && strings.HasPrefix(url, "/") {
+			url = baseURL + url
+		}
+		if value != "" && label != "" {
+			profile.Stats = append(profile.Stats, ProfileStat{
+				Label: label,
+				Value: value,
+				URL:   url,
+			})
+		}
+	})
+
+	doc.Find("#favourites .posteritem .react-component").Each(func(_ int, fav *goquery.Selection) {
+		title := strings.TrimSpace(fav.AttrOr("data-item-name", ""))
+		filmURL := strings.TrimSpace(fav.AttrOr("data-item-link", ""))
+		if filmURL != "" && strings.HasPrefix(filmURL, "/") {
+			filmURL = baseURL + filmURL
+		}
+		year := ""
+		if open := strings.LastIndex(title, "("); open != -1 {
+			if close := strings.LastIndex(title, ")"); close > open {
+				year = strings.TrimSpace(title[open+1 : close])
+				title = strings.TrimSpace(title[:open])
+			}
+		}
+		if title != "" {
+			profile.Favorites = append(profile.Favorites, FavoriteFilm{
+				Title:   title,
+				FilmURL: filmURL,
+				Year:    year,
+			})
+		}
+	})
+
+	doc.Find("section.timeline .activity-summary").Each(func(_ int, summary *goquery.Selection) {
+		line := compactSpaces(summary.Text())
+		if line == "" {
+			return
+		}
+		if !strings.Contains(strings.ToLower(line), "watched") {
+			return
+		}
+		profile.Recent = append(profile.Recent, line)
+	})
+	return profile, nil
 }
 
 func followingActivityURL(username, cookie string) string {
