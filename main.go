@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -47,12 +49,14 @@ type FavoriteFilm struct {
 }
 
 type ActivityItem struct {
-	Summary string
-	When    string
-	Title   string
-	FilmURL string
-	Rating  string
-	Kind    string
+	Summary  string
+	When     string
+	Title    string
+	FilmURL  string
+	Rating   string
+	Kind     string
+	Actor    string
+	ActorURL string
 }
 
 type tab int
@@ -71,24 +75,26 @@ type listState struct {
 }
 
 type model struct {
-	username    string
-	cookie      string
-	client      *http.Client
-	width       int
-	height      int
-	activeTab   tab
-	profile     Profile
-	diary       []DiaryEntry
-	activity    []ActivityItem
-	following   []ActivityItem
-	profileErr  error
-	diaryErr    error
-	activityErr error
-	followErr   error
-	loading     bool
-	diaryList   listState
-	actList     listState
-	followList  listState
+	username     string
+	profileUser  string
+	profileStack []string
+	cookie       string
+	client       *http.Client
+	width        int
+	height       int
+	activeTab    tab
+	profile      Profile
+	diary        []DiaryEntry
+	activity     []ActivityItem
+	following    []ActivityItem
+	profileErr   error
+	diaryErr     error
+	activityErr  error
+	followErr    error
+	loading      bool
+	diaryList    listState
+	actList      listState
+	followList   listState
 }
 
 type diaryMsg struct {
@@ -111,6 +117,10 @@ type errMsg struct {
 	err error
 }
 
+type openMsg struct {
+	err error
+}
+
 func main() {
 	username := flag.String("user", "cschnabel", "Letterboxd username")
 	flag.Parse()
@@ -119,11 +129,12 @@ func main() {
 	client := &http.Client{Timeout: 12 * time.Second}
 
 	m := model{
-		username:  *username,
-		cookie:    cookie,
-		client:    client,
-		activeTab: tabProfile,
-		loading:   true,
+		username:    *username,
+		profileUser: *username,
+		cookie:      cookie,
+		client:      client,
+		activeTab:   tabProfile,
+		loading:     true,
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -154,7 +165,7 @@ func loadCookie() (string, error) {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
-		fetchProfileCmd(m.client, m.username, m.cookie),
+		fetchProfileCmd(m.client, m.profileUser, m.cookie),
 		fetchDiaryCmd(m.client, m.username, m.cookie),
 		fetchActivityCmd(m.client, m.username, m.cookie, tabActivity),
 		fetchActivityCmd(m.client, m.username, m.cookie, tabFollowing),
@@ -245,11 +256,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			return m, tea.Batch(
-				fetchProfileCmd(m.client, m.username, m.cookie),
+				fetchProfileCmd(m.client, m.profileUser, m.cookie),
 				fetchDiaryCmd(m.client, m.username, m.cookie),
 				fetchActivityCmd(m.client, m.username, m.cookie, tabActivity),
 				fetchActivityCmd(m.client, m.username, m.cookie, tabFollowing),
 			)
+		case "enter":
+			if m.activeTab == tabFollowing {
+				m = m.openSelectedProfile()
+				if m.activeTab == tabProfile {
+					return m, fetchProfileCmd(m.client, m.profileUser, m.cookie)
+				}
+			}
+		case "b":
+			if m.activeTab == tabProfile {
+				m = m.goBackProfile()
+				if m.activeTab == tabProfile {
+					return m, fetchProfileCmd(m.client, m.profileUser, m.cookie)
+				}
+			}
+		case "o":
+			if m.activeTab == tabProfile {
+				return m, openBrowserCmd(profileURL(m.profileUser))
+			}
 		}
 	case profileMsg:
 		m.profile = msg.profile
@@ -271,6 +300,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.diaryErr = msg.err
 		m.loading = false
+	case openMsg:
+		if msg.err != nil {
+			m.profileErr = msg.err
+		}
 	}
 	return m, nil
 }
@@ -293,6 +326,39 @@ func (m *model) moveSelection(delta int) {
 		}
 		m.followList.selected = clamp(m.followList.selected+delta, 0, len(m.following)-1)
 	}
+}
+
+func (m model) openSelectedProfile() model {
+	if m.activeTab != tabFollowing || len(m.following) == 0 {
+		return m
+	}
+	item := m.following[m.followList.selected]
+	username := usernameFromURL(item.ActorURL)
+	if username == "" {
+		username = usernameFromURL(item.FilmURL)
+	}
+	if username == "" {
+		return m
+	}
+	if m.profileUser != "" {
+		m.profileStack = append(m.profileStack, m.profileUser)
+	}
+	m.profileUser = username
+	m.activeTab = tabProfile
+	m.loading = true
+	return m
+}
+
+func (m model) goBackProfile() model {
+	if len(m.profileStack) == 0 {
+		return m
+	}
+	last := m.profileStack[len(m.profileStack)-1]
+	m.profileStack = m.profileStack[:len(m.profileStack)-1]
+	m.profileUser = last
+	m.activeTab = tabProfile
+	m.loading = true
+	return m
 }
 
 func clamp(v, lo, hi int) int {
@@ -322,7 +388,7 @@ func (m model) View() string {
 		body = renderActivity(m.following, m.followErr, m.followList.selected, theme)
 	}
 
-	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • r refresh • q quit")
+	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • enter view profile • b back • o open browser • r refresh • q quit")
 	return lipgloss.JoinVertical(lipgloss.Left, header, tabLine, body, footer)
 }
 
@@ -375,8 +441,9 @@ func renderProfile(m model, theme themeStyles) string {
 		return theme.dim.Render("Loading profile…")
 	}
 	var rows []string
+	rows = append(rows, theme.subtle.Render(renderBreadcrumbs(m.profileStack, m.profileUser)))
 	if len(m.profile.Stats) > 0 {
-		rows = append(rows, theme.subtle.Render("Stats"))
+		rows = append(rows, "", theme.subtle.Render("Stats"))
 		for _, stat := range m.profile.Stats {
 			line := fmt.Sprintf("%s %s", theme.badge.Render(stat.Value), stat.Label)
 			rows = append(rows, theme.item.Render(line))
@@ -553,6 +620,15 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 		kind := strings.TrimSpace(row.AttrOr("class", ""))
 		summary := strings.TrimSpace(row.Find(".activity-summary").First().Text())
 		when := strings.TrimSpace(row.Find("time.time").First().AttrOr("datetime", ""))
+		actorSel := row.Find(".activity-summary a.name").First()
+		if actorSel.Length() == 0 {
+			actorSel = row.Find(".attribution-detail a.owner").First()
+		}
+		actor := strings.TrimSpace(actorSel.Text())
+		actorURL, _ := actorSel.Attr("href")
+		if actorURL != "" && strings.HasPrefix(actorURL, "/") {
+			actorURL = baseURL + actorURL
+		}
 		titleSel := row.Find("h2.name a").First()
 		title := strings.TrimSpace(titleSel.Text())
 		filmURL, _ := titleSel.Attr("href")
@@ -561,15 +637,77 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 		}
 		rating := strings.TrimSpace(row.Find(".rating").First().Text())
 		items = append(items, ActivityItem{
-			Summary: summary,
-			When:    when,
-			Title:   title,
-			FilmURL: filmURL,
-			Rating:  rating,
-			Kind:    kind,
+			Summary:  summary,
+			When:     when,
+			Title:    title,
+			FilmURL:  filmURL,
+			Rating:   rating,
+			Kind:     kind,
+			Actor:    actor,
+			ActorURL: actorURL,
 		})
 	})
 	return items, nil
+}
+
+func usernameFromURL(url string) string {
+	if url == "" {
+		return ""
+	}
+	if strings.HasPrefix(url, baseURL) {
+		url = strings.TrimPrefix(url, baseURL)
+	}
+	url = strings.TrimSpace(url)
+	if !strings.HasPrefix(url, "/") {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(url, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
+func profileURL(username string) string {
+	if username == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/%s/", baseURL, username)
+}
+
+func renderBreadcrumbs(stack []string, current string) string {
+	if current == "" {
+		return "Profile"
+	}
+	parts := make([]string, 0, len(stack)+1)
+	for _, name := range stack {
+		if name != "" {
+			parts = append(parts, "@"+name)
+		}
+	}
+	parts = append(parts, "@"+current)
+	return "Profile: " + strings.Join(parts, " > ")
+}
+
+func openBrowserCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		if url == "" {
+			return openMsg{err: fmt.Errorf("missing profile URL")}
+		}
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "windows":
+			cmd = exec.Command("cmd", "/c", "start", url)
+		default:
+			cmd = exec.Command("xdg-open", url)
+		}
+		if err := cmd.Start(); err != nil {
+			return openMsg{err: err}
+		}
+		return openMsg{}
+	}
 }
 
 func parseProfile(doc *goquery.Document) (Profile, error) {
