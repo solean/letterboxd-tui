@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/net/html"
 )
 
 const baseURL = "https://letterboxd.com"
@@ -64,6 +65,12 @@ type ActivityItem struct {
 	Kind     string
 	Actor    string
 	ActorURL string
+	Parts    []SummaryPart
+}
+
+type SummaryPart struct {
+	Text string
+	Kind string
 }
 
 type tab int
@@ -558,22 +565,32 @@ type themeStyles struct {
 	itemSel   lipgloss.Style
 	badge     lipgloss.Style
 	dim       lipgloss.Style
+	user      lipgloss.Style
+	movie     lipgloss.Style
+	rateHigh  lipgloss.Style
+	rateMid   lipgloss.Style
+	rateLow   lipgloss.Style
 }
 
 func newTheme() themeStyles {
 	return themeStyles{
-		header: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F2C14E")),
-		subtle: lipgloss.NewStyle().Foreground(lipgloss.Color("#7A8C93")),
-		tab:    lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#B0BEC5")),
+		header: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00E054")),
+		subtle: lipgloss.NewStyle().Foreground(lipgloss.Color("#9BB0B8")),
+		tab:    lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#C9D1D5")),
 		tabActive: lipgloss.NewStyle().
 			Padding(0, 1).
-			Foreground(lipgloss.Color("#0B0F0F")).
-			Background(lipgloss.Color("#F2C14E")).
+			Foreground(lipgloss.Color("#14181C")).
+			Background(lipgloss.Color("#00E054")).
 			Bold(true),
-		item:    lipgloss.NewStyle().Padding(0, 1),
-		itemSel: lipgloss.NewStyle().Padding(0, 1).Background(lipgloss.Color("#1C2B2D")).Foreground(lipgloss.Color("#E7E6E1")),
-		badge:   lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#C9D1D5")).Background(lipgloss.Color("#2C3E42")),
-		dim:     lipgloss.NewStyle().Foreground(lipgloss.Color("#55676E")),
+		item:     lipgloss.NewStyle().Padding(0, 1),
+		itemSel:  lipgloss.NewStyle().Padding(0, 1).Background(lipgloss.Color("#1F2A33")).Foreground(lipgloss.Color("#E6F0F2")),
+		badge:    lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#E6F0F2")).Background(lipgloss.Color("#2B3B45")),
+		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("#7F8D96")),
+		user:     lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C3A")).Bold(true),
+		movie:    lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true),
+		rateHigh: lipgloss.NewStyle().Foreground(lipgloss.Color("#00E054")).Bold(true),
+		rateMid:  lipgloss.NewStyle().Foreground(lipgloss.Color("#F2C94C")).Bold(true),
+		rateLow:  lipgloss.NewStyle().Foreground(lipgloss.Color("#E25555")).Bold(true),
 	}
 }
 
@@ -598,7 +615,7 @@ func renderProfile(m model, theme themeStyles) string {
 		return theme.dim.Render("Loading profile…")
 	}
 	var rows []string
-	rows = append(rows, theme.subtle.Render(renderBreadcrumbs(m.profileStack, m.profileUser)))
+	rows = append(rows, theme.subtle.Render(renderBreadcrumbs(m.profileStack, m.profileUser, theme.user)))
 	if len(m.profile.Stats) > 0 {
 		rows = append(rows, "", theme.subtle.Render("Stats"))
 		for _, stat := range m.profile.Stats {
@@ -620,6 +637,7 @@ func renderProfile(m model, theme themeStyles) string {
 	if len(m.profile.Recent) > 0 {
 		rows = append(rows, "", theme.subtle.Render("Recently Watched"))
 		for _, line := range m.profile.Recent {
+			line = strings.Replace(line, m.profileUser, theme.user.Render(m.profileUser), 1)
 			rows = append(rows, theme.item.Render(line))
 		}
 	}
@@ -646,6 +664,8 @@ func renderDiary(m model, theme themeStyles) string {
 		rating := entry.Rating
 		if rating == "" {
 			rating = "—"
+		} else {
+			rating = styleRating(rating, theme)
 		}
 		flags := ""
 		if entry.Rewatch {
@@ -705,7 +725,7 @@ func renderActivity(items []ActivityItem, err error, selected int, theme themeSt
 		if when == "" {
 			when = "—"
 		}
-		summary := compactSpaces(item.Summary)
+		summary := renderSummary(item, theme)
 		if summary == "" {
 			summary = item.Title
 		}
@@ -719,8 +739,38 @@ func renderActivity(items []ActivityItem, err error, selected int, theme themeSt
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
+func renderSummary(item ActivityItem, theme themeStyles) string {
+	if len(item.Parts) == 0 {
+		return compactSpaces(item.Summary)
+	}
+	var out strings.Builder
+	for _, part := range item.Parts {
+		text := compactSpaces(part.Text)
+		if text == "" {
+			continue
+		}
+		switch part.Kind {
+		case "user":
+			text = theme.user.Render(text)
+		case "movie":
+			text = theme.movie.Render(text)
+		case "rating":
+			text = styleRating(text, theme)
+		}
+		appendWithSpacing(&out, text)
+	}
+	return strings.TrimSpace(out.String())
+}
+
 func max(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b
@@ -738,6 +788,19 @@ func truncate(s string, width int) string {
 
 func compactSpaces(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
+}
+
+func appendWithSpacing(out *strings.Builder, text string) {
+	if out.Len() == 0 {
+		out.WriteString(text)
+		return
+	}
+	prev := out.String()
+	last := prev[len(prev)-1]
+	if last != ' ' {
+		out.WriteString(" ")
+	}
+	out.WriteString(text)
 }
 
 func formatWhen(when string) string {
@@ -832,7 +895,8 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 	var items []ActivityItem
 	doc.Find("section.activity-row").Each(func(_ int, row *goquery.Selection) {
 		kind := strings.TrimSpace(row.AttrOr("class", ""))
-		summary := strings.TrimSpace(row.Find(".activity-summary").First().Text())
+		summarySel := row.Find(".activity-summary").First()
+		summary := strings.TrimSpace(summarySel.Text())
 		when := strings.TrimSpace(row.Find("time.time").First().AttrOr("datetime", ""))
 		actorSel := row.Find(".activity-summary a.name").First()
 		if actorSel.Length() == 0 {
@@ -843,13 +907,19 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 		if actorURL != "" && strings.HasPrefix(actorURL, "/") {
 			actorURL = baseURL + actorURL
 		}
-		titleSel := row.Find("h2.name a").First()
-		title := strings.TrimSpace(titleSel.Text())
-		filmURL, _ := titleSel.Attr("href")
+		targetSel := row.Find(".activity-summary a.target").First()
+		title := strings.TrimSpace(targetSel.Text())
+		filmURL, _ := targetSel.Attr("href")
+		if title == "" {
+			titleSel := row.Find("h2.name a").First()
+			title = strings.TrimSpace(titleSel.Text())
+			filmURL, _ = titleSel.Attr("href")
+		}
 		if filmURL != "" && strings.HasPrefix(filmURL, "/") {
 			filmURL = baseURL + filmURL
 		}
 		rating := strings.TrimSpace(row.Find(".rating").First().Text())
+		parts := parseSummaryParts(summarySel)
 		items = append(items, ActivityItem{
 			Summary:  summary,
 			When:     when,
@@ -859,9 +929,168 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 			Kind:     kind,
 			Actor:    actor,
 			ActorURL: actorURL,
+			Parts:    parts,
 		})
 	})
 	return items, nil
+}
+
+func parseSummaryParts(summary *goquery.Selection) []SummaryPart {
+	var parts []SummaryPart
+	if summary == nil {
+		return parts
+	}
+	summary.Contents().Each(func(_ int, node *goquery.Selection) {
+		n := node.Get(0)
+		if n == nil {
+			return
+		}
+		switch n.Type {
+		case html.TextNode:
+			addSummaryPart(&parts, n.Data, "text")
+		case html.ElementNode:
+			if node.Is("a") {
+				class := node.AttrOr("class", "")
+				text := node.Text()
+				switch {
+				case strings.Contains(class, "target"):
+					if n != nil {
+						extracted := extractTargetTitle(n)
+						if extracted != "" {
+							text = extracted
+						}
+					}
+					addSummaryPart(&parts, text, "movie")
+				case strings.Contains(class, "name"):
+					addSummaryPart(&parts, text, "user")
+				default:
+					addSummaryPart(&parts, text, "text")
+				}
+				return
+			}
+			if node.Is("span") {
+				class := node.AttrOr("class", "")
+				text := node.Text()
+				if strings.Contains(class, "rating") {
+					addSummaryPart(&parts, text, "rating")
+				} else {
+					addSummaryPart(&parts, text, "text")
+				}
+				return
+			}
+			if node.Is("strong") {
+				class := node.AttrOr("class", "")
+				text := node.Text()
+				if strings.Contains(class, "name") {
+					addSummaryPart(&parts, text, "user")
+				} else {
+					addSummaryPart(&parts, text, "text")
+				}
+				return
+			}
+			addSummaryPart(&parts, node.Text(), "text")
+		}
+	})
+	return parts
+}
+
+func addSummaryPart(parts *[]SummaryPart, text, kind string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	*parts = append(*parts, SummaryPart{Text: text, Kind: kind})
+}
+
+func styleRating(rating string, theme themeStyles) string {
+	value := starsToValue(rating)
+	switch {
+	case value >= 5.0:
+		return glowStars(rating)
+	case value >= 4.0:
+		return theme.rateHigh.Render(rating)
+	case value >= 2.5:
+		return theme.rateMid.Render(rating)
+	case value > 0:
+		return theme.rateLow.Render(rating)
+	default:
+		return rating
+	}
+}
+
+func starsToValue(rating string) float64 {
+	rating = strings.TrimSpace(rating)
+	if rating == "" {
+		return 0
+	}
+	var value float64
+	for _, r := range rating {
+		switch r {
+		case '★':
+			value += 1.0
+		case '½':
+			value += 0.5
+		}
+	}
+	return value
+}
+
+func glowStars(rating string) string {
+	gradient := []string{
+		"#6BFF6A",
+		"#7BFF5A",
+		"#8CFF4A",
+		"#9EFF3A",
+		"#B0FF2A",
+	}
+	var out strings.Builder
+	colorIndex := 0
+	for _, r := range rating {
+		switch r {
+		case '★', '½':
+			color := gradient[min(colorIndex, len(gradient)-1)]
+			out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(string(r)))
+			colorIndex++
+		default:
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
+func extractTargetTitle(node *html.Node) string {
+	var parts []string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n == nil {
+			return
+		}
+		switch n.Type {
+		case html.TextNode:
+			parts = append(parts, n.Data)
+		case html.ElementNode:
+			if n.Data == "span" {
+				class := attrValue(n, "class")
+				if strings.Contains(class, "context") || strings.Contains(class, "rating") {
+					return
+				}
+			}
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				walk(c)
+			}
+		}
+	}
+	walk(node)
+	return compactSpaces(strings.Join(parts, " "))
+}
+
+func attrValue(n *html.Node, key string) string {
+	for _, attr := range n.Attr {
+		if attr.Key == key {
+			return attr.Val
+		}
+	}
+	return ""
 }
 
 func usernameFromURL(url string) string {
@@ -889,17 +1118,17 @@ func profileURL(username string) string {
 	return fmt.Sprintf("%s/%s/", baseURL, username)
 }
 
-func renderBreadcrumbs(stack []string, current string) string {
+func renderBreadcrumbs(stack []string, current string, userStyle lipgloss.Style) string {
 	if current == "" {
 		return "Profile"
 	}
 	parts := make([]string, 0, len(stack)+1)
 	for _, name := range stack {
 		if name != "" {
-			parts = append(parts, "@"+name)
+			parts = append(parts, userStyle.Render("@"+name))
 		}
 	}
-	parts = append(parts, "@"+current)
+	parts = append(parts, userStyle.Render("@"+current))
 	return "Profile: " + strings.Join(parts, " > ")
 }
 
