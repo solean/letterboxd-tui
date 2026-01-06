@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -48,6 +49,12 @@ type FavoriteFilm struct {
 	Year    string
 }
 
+type WatchlistItem struct {
+	Title   string
+	FilmURL string
+	Year    string
+}
+
 type ActivityItem struct {
 	Summary  string
 	When     string
@@ -64,11 +71,12 @@ type tab int
 const (
 	tabProfile tab = iota
 	tabDiary
+	tabWatchlist
 	tabFollowing
 	tabActivity
 )
 
-const tabCount = 4
+const tabCount = 5
 
 type listState struct {
 	selected int
@@ -83,22 +91,32 @@ type model struct {
 	width        int
 	height       int
 	activeTab    tab
+	lastTab      tab
 	profile      Profile
 	diary        []DiaryEntry
+	watchlist    []WatchlistItem
 	activity     []ActivityItem
 	following    []ActivityItem
 	profileErr   error
 	diaryErr     error
+	watchErr     error
 	activityErr  error
 	followErr    error
 	loading      bool
 	diaryList    listState
+	watchList    listState
 	actList      listState
 	followList   listState
+	viewport     viewport.Model
 }
 
 type diaryMsg struct {
 	items []DiaryEntry
+	err   error
+}
+
+type watchlistMsg struct {
+	items []WatchlistItem
 	err   error
 }
 
@@ -134,7 +152,9 @@ func main() {
 		cookie:      cookie,
 		client:      client,
 		activeTab:   tabProfile,
+		lastTab:     tabProfile,
 		loading:     true,
+		viewport:    viewport.New(0, 0),
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -167,6 +187,7 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		fetchProfileCmd(m.client, m.profileUser, m.cookie),
 		fetchDiaryCmd(m.client, m.username, m.cookie),
+		fetchWatchlistCmd(m.client, m.username, m.cookie),
 		fetchActivityCmd(m.client, m.username, m.cookie, tabActivity),
 		fetchActivityCmd(m.client, m.username, m.cookie, tabFollowing),
 	)
@@ -193,6 +214,18 @@ func fetchDiaryCmd(client *http.Client, username, cookie string) tea.Cmd {
 		}
 		items, err := parseDiary(doc)
 		return diaryMsg{items: items, err: err}
+	}
+}
+
+func fetchWatchlistCmd(client *http.Client, username, cookie string) tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/%s/watchlist/", baseURL, username)
+		doc, err := fetchDocument(client, url, cookie)
+		if err != nil {
+			return watchlistMsg{err: err}
+		}
+		items, err := parseWatchlist(doc)
+		return watchlistMsg{items: items, err: err}
 	}
 }
 
@@ -241,23 +274,53 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		bodyHeight := max(1, m.height-3)
+		m.viewport.Width = m.width
+		m.viewport.Height = bodyHeight
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "tab", "right":
 			m.activeTab = (m.activeTab + 1) % tabCount
+			m.resetTabPosition()
 		case "left", "shift+tab":
 			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
+			m.resetTabPosition()
 		case "j", "down":
-			m.moveSelection(1)
+			if m.activeTab == tabProfile {
+				m.viewport.LineDown(1)
+			} else {
+				m.moveSelection(1)
+				m.syncViewportToSelection()
+			}
 		case "k", "up":
-			m.moveSelection(-1)
+			if m.activeTab == tabProfile {
+				m.viewport.LineUp(1)
+			} else {
+				m.moveSelection(-1)
+				m.syncViewportToSelection()
+			}
+		case "pgdown":
+			if m.activeTab == tabProfile {
+				m.viewport.ViewDown()
+			} else {
+				m.pageSelection(1)
+				m.syncViewportToSelection()
+			}
+		case "pgup":
+			if m.activeTab == tabProfile {
+				m.viewport.ViewUp()
+			} else {
+				m.pageSelection(-1)
+				m.syncViewportToSelection()
+			}
 		case "r":
 			m.loading = true
 			return m, tea.Batch(
 				fetchProfileCmd(m.client, m.profileUser, m.cookie),
 				fetchDiaryCmd(m.client, m.username, m.cookie),
+				fetchWatchlistCmd(m.client, m.username, m.cookie),
 				fetchActivityCmd(m.client, m.username, m.cookie, tabActivity),
 				fetchActivityCmd(m.client, m.username, m.cookie, tabFollowing),
 			)
@@ -288,6 +351,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diary = msg.items
 		m.diaryErr = msg.err
 		m.loading = false
+	case watchlistMsg:
+		m.watchlist = msg.items
+		m.watchErr = msg.err
+		m.loading = false
 	case activityMsg:
 		if msg.tab == tabActivity {
 			m.activity = msg.items
@@ -315,6 +382,11 @@ func (m *model) moveSelection(delta int) {
 			return
 		}
 		m.diaryList.selected = clamp(m.diaryList.selected+delta, 0, len(m.diary)-1)
+	case tabWatchlist:
+		if len(m.watchlist) == 0 {
+			return
+		}
+		m.watchList.selected = clamp(m.watchList.selected+delta, 0, len(m.watchlist)-1)
 	case tabActivity:
 		if len(m.activity) == 0 {
 			return
@@ -325,6 +397,87 @@ func (m *model) moveSelection(delta int) {
 			return
 		}
 		m.followList.selected = clamp(m.followList.selected+delta, 0, len(m.following)-1)
+	}
+}
+
+func (m *model) resetTabPosition() {
+	if m.activeTab == m.lastTab {
+		return
+	}
+	m.viewport.YOffset = 0
+	switch m.activeTab {
+	case tabDiary:
+		m.diaryList.selected = 0
+	case tabWatchlist:
+		m.watchList.selected = 0
+	case tabActivity:
+		m.actList.selected = 0
+	case tabFollowing:
+		m.followList.selected = 0
+	}
+	m.lastTab = m.activeTab
+}
+
+func (m *model) pageSelection(dir int) {
+	step := max(1, m.viewport.Height-1)
+	switch m.activeTab {
+	case tabDiary:
+		if len(m.diary) == 0 {
+			return
+		}
+		m.diaryList.selected = clamp(m.diaryList.selected+dir*step, 0, len(m.diary)-1)
+	case tabWatchlist:
+		if len(m.watchlist) == 0 {
+			return
+		}
+		m.watchList.selected = clamp(m.watchList.selected+dir*step, 0, len(m.watchlist)-1)
+	case tabActivity:
+		if len(m.activity) == 0 {
+			return
+		}
+		m.actList.selected = clamp(m.actList.selected+dir*step, 0, len(m.activity)-1)
+	case tabFollowing:
+		if len(m.following) == 0 {
+			return
+		}
+		m.followList.selected = clamp(m.followList.selected+dir*step, 0, len(m.following)-1)
+	}
+}
+
+func (m *model) syncViewportToSelection() {
+	var total, selected int
+	switch m.activeTab {
+	case tabDiary:
+		total = len(m.diary)
+		selected = m.diaryList.selected
+	case tabWatchlist:
+		total = len(m.watchlist)
+		selected = m.watchList.selected
+	case tabActivity:
+		total = len(m.activity)
+		selected = m.actList.selected
+	case tabFollowing:
+		total = len(m.following)
+		selected = m.followList.selected
+	default:
+		return
+	}
+	if total == 0 || m.viewport.Height <= 0 {
+		return
+	}
+	top := m.viewport.YOffset
+	bottom := top + m.viewport.Height - 1
+	if selected < top {
+		m.viewport.YOffset = selected
+	} else if selected > bottom {
+		m.viewport.YOffset = selected - m.viewport.Height + 1
+	}
+	if m.viewport.YOffset < 0 {
+		m.viewport.YOffset = 0
+	}
+	maxOffset := max(0, total-m.viewport.Height)
+	if m.viewport.YOffset > maxOffset {
+		m.viewport.YOffset = maxOffset
 	}
 }
 
@@ -382,14 +535,18 @@ func (m model) View() string {
 		body = renderProfile(m, theme)
 	case tabDiary:
 		body = renderDiary(m, theme)
+	case tabWatchlist:
+		body = renderWatchlist(m, theme)
 	case tabActivity:
 		body = renderActivity(m.activity, m.activityErr, m.actList.selected, theme)
 	case tabFollowing:
 		body = renderActivity(m.following, m.followErr, m.followList.selected, theme)
 	}
 
-	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • enter view profile • b back • o open browser • r refresh • q quit")
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabLine, body, footer)
+	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • pgup/pgdn scroll • enter view profile • b back • o open browser • r refresh • q quit")
+	vp := m.viewport
+	vp.SetContent(body)
+	return lipgloss.JoinVertical(lipgloss.Left, header, tabLine, vp.View(), footer)
 }
 
 type themeStyles struct {
@@ -421,7 +578,7 @@ func newTheme() themeStyles {
 }
 
 func renderTabs(m model, theme themeStyles) string {
-	tabs := []string{"Profile", "Diary", "Friends", "My Activity"}
+	tabs := []string{"Profile", "Diary", "Watchlist", "Friends", "My Activity"}
 	var out []string
 	for i, label := range tabs {
 		if tab(i) == m.activeTab {
@@ -501,6 +658,33 @@ func renderDiary(m model, theme themeStyles) string {
 		line = truncate(line, width)
 		style := theme.item
 		if i == m.diaryList.selected {
+			style = theme.itemSel
+		}
+		rows = append(rows, style.Render(line))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func renderWatchlist(m model, theme themeStyles) string {
+	if m.watchErr != nil {
+		return theme.dim.Render("Error: " + m.watchErr.Error())
+	}
+	if m.loading && len(m.watchlist) == 0 {
+		return theme.dim.Render("Loading watchlist…")
+	}
+	if len(m.watchlist) == 0 {
+		return theme.dim.Render("No watchlist items found.")
+	}
+	var rows []string
+	width := max(40, m.width-2)
+	for i, item := range m.watchlist {
+		title := item.Title
+		if item.Year != "" {
+			title = fmt.Sprintf("%s (%s)", item.Title, item.Year)
+		}
+		line := truncate(title, width)
+		style := theme.item
+		if i == m.watchList.selected {
 			style = theme.itemSel
 		}
 		rows = append(rows, style.Render(line))
@@ -612,6 +796,36 @@ func parseDiary(doc *goquery.Document) ([]DiaryEntry, error) {
 		}
 	})
 	return entries, nil
+}
+
+func parseWatchlist(doc *goquery.Document) ([]WatchlistItem, error) {
+	var items []WatchlistItem
+	doc.Find(".js-watchlist-main-content .react-component").Each(func(_ int, item *goquery.Selection) {
+		title := strings.TrimSpace(item.AttrOr("data-item-name", ""))
+		filmURL := strings.TrimSpace(item.AttrOr("data-item-link", ""))
+		if title == "" || filmURL == "" {
+			return
+		}
+		if !strings.Contains(filmURL, "/film/") {
+			return
+		}
+		if strings.HasPrefix(filmURL, "/") {
+			filmURL = baseURL + filmURL
+		}
+		year := ""
+		if open := strings.LastIndex(title, "("); open != -1 {
+			if close := strings.LastIndex(title, ")"); close > open {
+				year = strings.TrimSpace(title[open+1 : close])
+				title = strings.TrimSpace(title[:open])
+			}
+		}
+		items = append(items, WatchlistItem{
+			Title:   title,
+			FilmURL: filmURL,
+			Year:    year,
+		})
+	})
+	return items, nil
 }
 
 func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
