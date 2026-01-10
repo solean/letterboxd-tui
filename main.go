@@ -56,6 +56,19 @@ type WatchlistItem struct {
 	Year    string
 }
 
+type Film struct {
+	Title       string
+	Year        string
+	Description string
+	Director    string
+	AvgRating   string
+	Runtime     string
+	URL         string
+	Cast        []string
+	UserRating  string
+	UserStatus  string
+}
+
 type ActivityItem struct {
 	Summary  string
 	When     string
@@ -79,6 +92,7 @@ const (
 	tabProfile tab = iota
 	tabDiary
 	tabWatchlist
+	tabFilm
 	tabFollowing
 	tabActivity
 )
@@ -104,17 +118,22 @@ type model struct {
 	watchlist    []WatchlistItem
 	activity     []ActivityItem
 	following    []ActivityItem
+	film         Film
 	profileErr   error
 	diaryErr     error
 	watchErr     error
 	activityErr  error
 	followErr    error
+	filmErr      error
 	loading      bool
 	diaryList    listState
 	watchList    listState
 	actList      listState
 	followList   listState
 	viewport     viewport.Model
+	modalVP      viewport.Model
+	filmReturn   tab
+	profileModal bool
 }
 
 type diaryMsg struct {
@@ -125,6 +144,11 @@ type diaryMsg struct {
 type watchlistMsg struct {
 	items []WatchlistItem
 	err   error
+}
+
+type filmMsg struct {
+	film Film
+	err  error
 }
 
 type profileMsg struct {
@@ -162,6 +186,7 @@ func main() {
 		lastTab:     tabProfile,
 		loading:     true,
 		viewport:    viewport.New(0, 0),
+		modalVP:     viewport.New(0, 0),
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -236,6 +261,26 @@ func fetchWatchlistCmd(client *http.Client, username, cookie string) tea.Cmd {
 	}
 }
 
+func fetchFilmCmd(client *http.Client, filmURL, username, cookie string) tea.Cmd {
+	return func() tea.Msg {
+		doc, err := fetchDocument(client, filmURL, cookie)
+		if err != nil {
+			return filmMsg{err: err}
+		}
+		film, err := parseFilm(doc, filmURL)
+		if err == nil && username != "" {
+			userURL := userFilmURL(username, filmURL)
+			if userURL != "" {
+				userDoc, status, err := fetchDocumentAllowStatus(client, userURL, cookie)
+				if err == nil && status == http.StatusOK {
+					film.UserRating, film.UserStatus = parseUserFilm(userDoc)
+				}
+			}
+		}
+		return filmMsg{film: film, err: err}
+	}
+}
+
 func fetchActivityCmd(client *http.Client, username, cookie string, which tab) tea.Cmd {
 	return func() tea.Msg {
 		var url string
@@ -276,6 +321,27 @@ func fetchDocument(client *http.Client, url, cookie string) (*goquery.Document, 
 	return goquery.NewDocumentFromReader(resp.Body)
 }
 
+func fetchDocumentAllowStatus(client *http.Client, url, cookie string) (*goquery.Document, int, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	if cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, resp.StatusCode, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, url)
+	}
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	return doc, resp.StatusCode, err
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -287,36 +353,61 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if m.modalOpen() {
+				if m.activeTab == tabFilm {
+					m.activeTab = m.filmReturn
+					m.resetTabPosition()
+				} else if m.profileModal {
+					m.profileModal = false
+				}
+				return m, nil
+			}
 			return m, tea.Quit
 		case "tab", "right":
-			m.activeTab = (m.activeTab + 1) % tabCount
+			if m.activeTab == tabFilm {
+				m.activeTab = m.filmReturn
+			} else {
+				m.activeTab = nextTab(m.activeTab)
+			}
 			m.resetTabPosition()
 		case "left", "shift+tab":
-			m.activeTab = (m.activeTab + tabCount - 1) % tabCount
+			if m.activeTab == tabFilm {
+				m.activeTab = m.filmReturn
+			} else {
+				m.activeTab = prevTab(m.activeTab)
+			}
 			m.resetTabPosition()
 		case "j", "down":
-			if m.activeTab == tabProfile {
+			if m.modalOpen() {
+				m.modalVP.LineDown(1)
+			} else if m.activeTab == tabProfile {
 				m.viewport.LineDown(1)
 			} else {
 				m.moveSelection(1)
 				m.syncViewportToSelection()
 			}
 		case "k", "up":
-			if m.activeTab == tabProfile {
+			if m.modalOpen() {
+				m.modalVP.LineUp(1)
+			} else if m.activeTab == tabProfile {
 				m.viewport.LineUp(1)
 			} else {
 				m.moveSelection(-1)
 				m.syncViewportToSelection()
 			}
 		case "pgdown":
-			if m.activeTab == tabProfile {
+			if m.modalOpen() {
+				m.modalVP.ViewDown()
+			} else if m.activeTab == tabProfile {
 				m.viewport.ViewDown()
 			} else {
 				m.pageSelection(1)
 				m.syncViewportToSelection()
 			}
 		case "pgup":
-			if m.activeTab == tabProfile {
+			if m.modalOpen() {
+				m.modalVP.ViewUp()
+			} else if m.activeTab == tabProfile {
 				m.viewport.ViewUp()
 			} else {
 				m.pageSelection(-1)
@@ -334,20 +425,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
-				if m.activeTab == tabProfile {
-					return m, fetchProfileCmd(m.client, m.profileUser, m.cookie)
+				return m, fetchProfileCmd(m.client, m.profileUser, m.cookie)
+			} else if m.activeTab == tabDiary || m.activeTab == tabWatchlist || m.activeTab == tabActivity {
+				m = m.openSelectedFilm()
+				if m.activeTab == tabFilm {
+					return m, fetchFilmCmd(m.client, m.film.URL, m.username, m.cookie)
 				}
 			}
 		case "b":
-			if m.activeTab == tabProfile {
+			if m.profileModal {
+				m.profileModal = false
+			} else if m.activeTab == tabProfile {
 				m = m.goBackProfile()
 				if m.activeTab == tabProfile {
 					return m, fetchProfileCmd(m.client, m.profileUser, m.cookie)
 				}
 			}
 		case "o":
-			if m.activeTab == tabProfile {
+			if m.profileModal || m.activeTab == tabProfile {
 				return m, openBrowserCmd(profileURL(m.profileUser))
+			}
+		case "esc":
+			if m.activeTab == tabFilm {
+				m.activeTab = m.filmReturn
+				m.resetTabPosition()
+			} else if m.profileModal {
+				m.profileModal = false
 			}
 		}
 	case profileMsg:
@@ -361,6 +464,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case watchlistMsg:
 		m.watchlist = msg.items
 		m.watchErr = msg.err
+		m.loading = false
+	case filmMsg:
+		m.film = msg.film
+		m.filmErr = msg.err
 		m.loading = false
 	case activityMsg:
 		if msg.tab == tabActivity {
@@ -417,6 +524,8 @@ func (m *model) resetTabPosition() {
 		m.diaryList.selected = 0
 	case tabWatchlist:
 		m.watchList.selected = 0
+	case tabFilm:
+		m.filmErr = nil
 	case tabActivity:
 		m.actList.selected = 0
 	case tabFollowing:
@@ -500,12 +609,46 @@ func (m model) openSelectedProfile() model {
 	if username == "" {
 		return m
 	}
-	if m.profileUser != "" {
-		m.profileStack = append(m.profileStack, m.profileUser)
-	}
 	m.profileUser = username
-	m.activeTab = tabProfile
 	m.loading = true
+	m.profileModal = true
+	m.modalVP.YOffset = 0
+	return m
+}
+
+func (m model) openSelectedFilm() model {
+	var filmURL string
+	switch m.activeTab {
+	case tabDiary:
+		if len(m.diary) == 0 {
+			return m
+		}
+		filmURL = m.diary[m.diaryList.selected].FilmURL
+	case tabWatchlist:
+		if len(m.watchlist) == 0 {
+			return m
+		}
+		filmURL = m.watchlist[m.watchList.selected].FilmURL
+	case tabActivity:
+		if len(m.activity) == 0 {
+			return m
+		}
+		filmURL = m.activity[m.actList.selected].FilmURL
+	case tabFollowing:
+		if len(m.following) == 0 {
+			return m
+		}
+		filmURL = m.following[m.followList.selected].FilmURL
+	}
+	filmURL = normalizeFilmURL(filmURL)
+	if filmURL == "" {
+		return m
+	}
+	m.film = Film{URL: filmURL}
+	m.filmReturn = m.activeTab
+	m.activeTab = tabFilm
+	m.loading = true
+	m.viewport.YOffset = 0
 	return m
 }
 
@@ -544,16 +687,29 @@ func (m model) View() string {
 		body = renderDiary(m, theme)
 	case tabWatchlist:
 		body = renderWatchlist(m, theme)
+	case tabFilm:
+		body = renderFilm(m, theme)
 	case tabActivity:
 		body = renderActivity(m.activity, m.activityErr, m.actList.selected, theme)
 	case tabFollowing:
 		body = renderActivity(m.following, m.followErr, m.followList.selected, theme)
 	}
 
-	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • pgup/pgdn scroll • enter view profile • b back • o open browser • r refresh • q quit")
+	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • pgup/pgdn scroll • enter view • b back • esc close film • o open browser • r refresh • q quit")
 	vp := m.viewport
 	vp.SetContent(body)
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabLine, vp.View(), footer)
+	base := lipgloss.JoinVertical(lipgloss.Left, header, tabLine, vp.View(), footer)
+	if m.activeTab == tabFilm {
+		return renderFilmModal(base, m, theme)
+	}
+	if m.profileModal {
+		return renderProfileModal(base, m, theme)
+	}
+	return base
+}
+
+func (m model) modalOpen() bool {
+	return m.activeTab == tabFilm || m.profileModal
 }
 
 type themeStyles struct {
@@ -595,16 +751,57 @@ func newTheme() themeStyles {
 }
 
 func renderTabs(m model, theme themeStyles) string {
-	tabs := []string{"Profile", "Diary", "Watchlist", "Friends", "My Activity"}
+	tabs := []string{"Profile", "Diary", "Friends", "My Activity", "Watchlist"}
 	var out []string
 	for i, label := range tabs {
-		if tab(i) == m.activeTab {
+		if visibleTabByIndex(i) == m.activeTab {
 			out = append(out, theme.tabActive.Render(label))
 		} else {
 			out = append(out, theme.tab.Render(label))
 		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, out...)
+}
+
+func visibleTabs() []tab {
+	return []tab{tabProfile, tabDiary, tabFollowing, tabActivity, tabWatchlist}
+}
+
+func visibleTabByIndex(i int) tab {
+	tabs := visibleTabs()
+	if i < 0 || i >= len(tabs) {
+		return tabProfile
+	}
+	return tabs[i]
+}
+
+func nextTab(current tab) tab {
+	if current == tabFilm {
+		return tabProfile
+	}
+	tabs := visibleTabs()
+	for i, t := range tabs {
+		if t == current {
+			return tabs[(i+1)%len(tabs)]
+		}
+	}
+	return tabProfile
+}
+
+func prevTab(current tab) tab {
+	if current == tabFilm {
+		return tabProfile
+	}
+	tabs := visibleTabs()
+	for i, t := range tabs {
+		if t == current {
+			if i == 0 {
+				return tabs[len(tabs)-1]
+			}
+			return tabs[i-1]
+		}
+	}
+	return tabProfile
 }
 
 func renderProfile(m model, theme themeStyles) string {
@@ -712,6 +909,109 @@ func renderWatchlist(m model, theme themeStyles) string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
+func renderFilm(m model, theme themeStyles) string {
+	if m.filmErr != nil {
+		return theme.dim.Render("Error: " + m.filmErr.Error())
+	}
+	if m.loading && m.film.Title == "" {
+		return theme.dim.Render("Loading film…")
+	}
+	if m.film.Title == "" {
+		return theme.dim.Render("No film details found.")
+	}
+	var rows []string
+	title := m.film.Title
+	if m.film.Year != "" {
+		title = fmt.Sprintf("%s (%s)", title, m.film.Year)
+	}
+	rows = append(rows, theme.header.Render(title))
+	meta := []string{}
+	if m.film.Director != "" {
+		meta = append(meta, "Dir. "+m.film.Director)
+	}
+	if m.film.Runtime != "" {
+		meta = append(meta, m.film.Runtime)
+	}
+	if m.film.AvgRating != "" {
+		meta = append(meta, "Avg "+m.film.AvgRating)
+	}
+	if len(meta) > 0 {
+		rows = append(rows, theme.subtle.Render(strings.Join(meta, " • ")))
+	}
+	if m.film.UserStatus != "" || m.film.UserRating != "" {
+		userLine := "You: "
+		if m.film.UserStatus != "" {
+			userLine += m.film.UserStatus
+		}
+		if m.film.UserRating != "" {
+			if m.film.UserStatus != "" {
+				userLine += " "
+			}
+			userLine += styleRating(m.film.UserRating, theme)
+		}
+		rows = append(rows, theme.subtle.Render(userLine))
+	}
+	if len(m.film.Cast) > 0 {
+		rows = append(rows, "", theme.subtle.Render("Top Billed Cast"))
+		rows = append(rows, theme.item.Render(strings.Join(m.film.Cast, ", ")))
+	}
+	if m.film.Description != "" {
+		rows = append(rows, "", wrapText(m.film.Description, max(40, m.width-4)))
+	}
+	if m.film.URL != "" {
+		rows = append(rows, "", theme.dim.Render(m.film.URL))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func renderFilmModal(base string, m model, theme themeStyles) string {
+	overlay := renderFilm(m, theme)
+	if overlay == "" {
+		return base
+	}
+	width, height := modalDimensions(m.width, m.height)
+	panel := lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#3A4A55")).
+		Background(lipgloss.Color("#14181C")).
+		Foreground(lipgloss.Color("#E6F0F2"))
+	panelContent := lipgloss.Place(width-4, height-2, lipgloss.Left, lipgloss.Top, overlay)
+	modal := panel.Render(panelContent)
+
+	dim := lipgloss.NewStyle().
+		Background(lipgloss.Color("#0E1114")).
+		Foreground(lipgloss.Color("#5E6A72")).
+		Render(base)
+	return dim + "\n" + lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0E1114")))
+}
+
+func renderProfileModal(base string, m model, theme themeStyles) string {
+	overlay := renderProfile(m, theme)
+	if overlay == "" {
+		return base
+	}
+	width, height := modalDimensions(m.width, m.height)
+	panel := lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#3A4A55")).
+		Background(lipgloss.Color("#14181C")).
+		Foreground(lipgloss.Color("#E6F0F2"))
+	panelContent := lipgloss.Place(width-4, height-2, lipgloss.Left, lipgloss.Top, overlay)
+	modal := panel.Render(panelContent)
+
+	dim := lipgloss.NewStyle().
+		Background(lipgloss.Color("#0E1114")).
+		Foreground(lipgloss.Color("#5E6A72")).
+		Render(base)
+	return dim + "\n" + lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0E1114")))
+}
+
 func renderActivity(items []ActivityItem, err error, selected int, theme themeStyles) string {
 	if err != nil {
 		return theme.dim.Render("Error: " + err.Error())
@@ -790,6 +1090,28 @@ func compactSpaces(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
+func wrapText(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return ""
+	}
+	var lines []string
+	line := words[0]
+	for _, word := range words[1:] {
+		if lipgloss.Width(line)+1+lipgloss.Width(word) > width {
+			lines = append(lines, line)
+			line = word
+		} else {
+			line += " " + word
+		}
+	}
+	lines = append(lines, line)
+	return strings.Join(lines, "\n")
+}
+
 func appendWithSpacing(out *strings.Builder, text string) {
 	if out.Len() == 0 {
 		out.WriteString(text)
@@ -801,6 +1123,12 @@ func appendWithSpacing(out *strings.Builder, text string) {
 		out.WriteString(" ")
 	}
 	out.WriteString(text)
+}
+
+func modalDimensions(w, h int) (int, int) {
+	width := max(50, min(96, w-6))
+	height := max(10, min(24, h-6))
+	return width, height
 }
 
 func formatWhen(when string) string {
@@ -933,6 +1261,94 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 		})
 	})
 	return items, nil
+}
+
+func parseFilm(doc *goquery.Document, url string) (Film, error) {
+	var film Film
+	film.URL = url
+	title := strings.TrimSpace(doc.Find(`meta[property="og:title"]`).AttrOr("content", ""))
+	description := strings.TrimSpace(doc.Find(`meta[property="og:description"]`).AttrOr("content", ""))
+	director := strings.TrimSpace(doc.Find(`meta[name="twitter:data1"]`).AttrOr("content", ""))
+	avgRating := strings.TrimSpace(doc.Find(`meta[name="twitter:data2"]`).AttrOr("content", ""))
+	runtime := strings.TrimSpace(findRuntime(doc))
+	cast := parseTopBilledCast(doc, 6)
+
+	year := ""
+	if open := strings.LastIndex(title, "("); open != -1 {
+		if close := strings.LastIndex(title, ")"); close > open {
+			year = strings.TrimSpace(title[open+1 : close])
+			title = strings.TrimSpace(title[:open])
+		}
+	}
+	film.Title = title
+	film.Year = year
+	film.Description = description
+	film.Director = director
+	film.AvgRating = avgRating
+	film.Runtime = runtime
+	film.Cast = cast
+	return film, nil
+}
+
+func findRuntime(doc *goquery.Document) string {
+	text := compactSpaces(doc.Find("p.text-link.text-footer").First().Text())
+	if text == "" {
+		return ""
+	}
+	fields := strings.Fields(text)
+	for i := 0; i < len(fields); i++ {
+		if strings.HasSuffix(fields[i], "mins") {
+			return fields[i]
+		}
+		if i+1 < len(fields) && strings.HasSuffix(fields[i+1], "mins") {
+			return fields[i] + " " + fields[i+1]
+		}
+	}
+	return ""
+}
+
+func parseTopBilledCast(doc *goquery.Document, limit int) []string {
+	var cast []string
+	doc.Find("#tab-cast .cast-list a.text-slug").EachWithBreak(func(_ int, sel *goquery.Selection) bool {
+		name := strings.TrimSpace(sel.Text())
+		if name == "" {
+			return true
+		}
+		cast = append(cast, name)
+		if limit > 0 && len(cast) >= limit {
+			return false
+		}
+		return true
+	})
+	return cast
+}
+
+func parseUserFilm(doc *goquery.Document) (string, string) {
+	status := strings.TrimSpace(doc.Find(".film-viewing-info-wrapper .context").First().Text())
+	status = strings.TrimSuffix(status, "by")
+	status = strings.TrimSpace(strings.TrimSuffix(status, "By"))
+	rating := strings.TrimSpace(doc.Find(".content-reactions-strip .rating").First().Text())
+	return rating, status
+}
+
+func userFilmURL(username, filmURL string) string {
+	slug := filmSlug(filmURL)
+	if slug == "" || username == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/%s/film/%s/", baseURL, username, slug)
+}
+
+func filmSlug(filmURL string) string {
+	filmURL = normalizeFilmURL(filmURL)
+	if filmURL == "" {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(filmURL, baseURL), "/"), "/")
+	if len(parts) >= 2 && parts[0] == "film" {
+		return parts[1]
+	}
+	return ""
 }
 
 func parseSummaryParts(summary *goquery.Selection) []SummaryPart {
@@ -1151,6 +1567,32 @@ func openBrowserCmd(url string) tea.Cmd {
 		}
 		return openMsg{}
 	}
+}
+
+func normalizeFilmURL(url string) string {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return ""
+	}
+	if strings.HasPrefix(url, baseURL) {
+		url = strings.TrimPrefix(url, baseURL)
+	}
+	if !strings.HasPrefix(url, "/") {
+		url = "/" + url
+	}
+	parts := strings.Split(strings.Trim(url, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	if parts[0] == "film" && len(parts) >= 2 {
+		return baseURL + "/film/" + parts[1] + "/"
+	}
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i] == "film" && i+1 < len(parts) {
+			return baseURL + "/film/" + parts[i+1] + "/"
+		}
+	}
+	return ""
 }
 
 func parseProfile(doc *goquery.Document) (Profile, error) {
