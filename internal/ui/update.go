@@ -89,7 +89,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
-				return m, fetchProfileCmd(m.client, m.profileUser)
+				return m, fetchProfileModalCmd(m.client, m.modalUser)
 			} else if m.activeTab == tabDiary || m.activeTab == tabWatchlist || m.activeTab == tabActivity {
 				m = m.openSelectedFilm()
 				if m.activeTab == tabFilm {
@@ -106,7 +106,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "o":
-			if m.profileModal || m.activeTab == tabProfile {
+			if m.profileModal {
+				return m, openBrowserCmd(letterboxd.ProfileURL(m.modalUser))
+			} else if m.activeTab == tabProfile {
 				return m, openBrowserCmd(letterboxd.ProfileURL(m.profileUser))
 			}
 		case "esc":
@@ -118,9 +120,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case profileMsg:
-		m.profile = msg.profile
-		m.profileErr = msg.err
-		m.loading = false
+		if msg.modal {
+			m.modalProfile = msg.profile
+			m.modalProfileErr = msg.err
+			m.modalLoading = false
+		} else {
+			m.profile = msg.profile
+			m.profileErr = msg.err
+			m.loading = false
+		}
 	case diaryMsg:
 		m.diary = msg.items
 		m.diaryErr = msg.err

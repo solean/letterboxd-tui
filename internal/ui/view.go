@@ -127,43 +127,7 @@ func renderLegend(m Model) string {
 }
 
 func renderProfile(m Model, theme themeStyles) string {
-	if m.profileErr != nil {
-		return theme.dim.Render("Error: " + m.profileErr.Error())
-	}
-	if m.loading && len(m.profile.Stats) == 0 && len(m.profile.Favorites) == 0 {
-		return theme.dim.Render("Loading profile…")
-	}
-	var rows []string
-	rows = append(rows, theme.subtle.Render(renderBreadcrumbs(m.profileStack, m.profileUser, theme.user)))
-	if len(m.profile.Stats) > 0 {
-		rows = append(rows, "", theme.subtle.Render("Stats"))
-		for _, stat := range m.profile.Stats {
-			line := fmt.Sprintf("%s %s", theme.badge.Render(stat.Value), stat.Label)
-			rows = append(rows, theme.item.Render(line))
-		}
-	}
-	if len(m.profile.Favorites) > 0 {
-		rows = append(rows, "", theme.subtle.Render("Top 4 Films"))
-		for i, fav := range m.profile.Favorites {
-			prefix := fmt.Sprintf("%d.", i+1)
-			title := fav.Title
-			if fav.Year != "" {
-				title = fmt.Sprintf("%s (%s)", fav.Title, fav.Year)
-			}
-			rows = append(rows, theme.item.Render(fmt.Sprintf("%s %s", prefix, title)))
-		}
-	}
-	if len(m.profile.Recent) > 0 {
-		rows = append(rows, "", theme.subtle.Render("Recently Watched"))
-		for _, line := range m.profile.Recent {
-			line = strings.Replace(line, m.profileUser, theme.user.Render(m.profileUser), 1)
-			rows = append(rows, theme.item.Render(line))
-		}
-	}
-	if len(rows) == 0 {
-		return theme.dim.Render("No profile data found.")
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return renderProfileContent(m.profile, m.profileErr, m.loading, m.profileUser, m.profileStack, theme)
 }
 
 func renderDiary(m Model, theme themeStyles) string {
@@ -227,6 +191,46 @@ func renderWatchlist(m Model, theme themeStyles) string {
 			style = theme.itemSel
 		}
 		rows = append(rows, style.Render(line))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func renderProfileContent(profile letterboxd.Profile, err error, loading bool, profileUser string, stack []string, theme themeStyles) string {
+	if err != nil {
+		return theme.dim.Render("Error: " + err.Error())
+	}
+	if loading && len(profile.Stats) == 0 && len(profile.Favorites) == 0 {
+		return theme.dim.Render("Loading profile…")
+	}
+	var rows []string
+	rows = append(rows, theme.subtle.Render(renderBreadcrumbs(stack, profileUser, theme.user)))
+	if len(profile.Stats) > 0 {
+		rows = append(rows, "", theme.subtle.Render("Stats"))
+		for _, stat := range profile.Stats {
+			line := fmt.Sprintf("%s %s", theme.badge.Render(stat.Value), stat.Label)
+			rows = append(rows, theme.item.Render(line))
+		}
+	}
+	if len(profile.Favorites) > 0 {
+		rows = append(rows, "", theme.subtle.Render("Top 4 Films"))
+		for i, fav := range profile.Favorites {
+			prefix := fmt.Sprintf("%d.", i+1)
+			title := fav.Title
+			if fav.Year != "" {
+				title = fmt.Sprintf("%s (%s)", fav.Title, fav.Year)
+			}
+			rows = append(rows, theme.item.Render(fmt.Sprintf("%s %s", prefix, title)))
+		}
+	}
+	if len(profile.Recent) > 0 {
+		rows = append(rows, "", theme.subtle.Render("Recently Watched"))
+		for _, line := range profile.Recent {
+			line = strings.Replace(line, profileUser, theme.user.Render(profileUser), 1)
+			rows = append(rows, theme.item.Render(line))
+		}
+	}
+	if len(rows) == 0 {
+		return theme.dim.Render("No profile data found.")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -311,7 +315,7 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 }
 
 func renderProfileModal(base string, m Model, theme themeStyles) string {
-	overlay := renderProfile(m, theme)
+	overlay := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme)
 	if overlay == "" {
 		return base
 	}

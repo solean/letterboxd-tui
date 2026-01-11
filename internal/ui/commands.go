@@ -28,6 +28,7 @@ type filmMsg struct {
 type profileMsg struct {
 	profile letterboxd.Profile
 	err     error
+	modal   bool
 }
 
 type activityMsg struct {
@@ -57,7 +58,14 @@ func (m Model) Init() tea.Cmd {
 func fetchProfileCmd(client *letterboxd.Client, username string) tea.Cmd {
 	return func() tea.Msg {
 		profile, err := client.Profile(username)
-		return profileMsg{profile: profile, err: err}
+		return profileMsg{profile: profile, err: err, modal: false}
+	}
+}
+
+func fetchProfileModalCmd(client *letterboxd.Client, username string) tea.Cmd {
+	return func() tea.Msg {
+		profile, err := client.Profile(username)
+		return profileMsg{profile: profile, err: err, modal: true}
 	}
 }
 
