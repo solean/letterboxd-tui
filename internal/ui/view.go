@@ -99,7 +99,7 @@ func prevTab(current tab) tab {
 
 func renderLegend(m Model) string {
 	if m.activeTab == tabFilm {
-		return "j/k scroll • pgup/pgdn page • tab/shift+tab back • esc/q close film"
+		return "j/k scroll • pgup/pgdn page • o open film in browser • tab/shift+tab back • esc/q close film"
 	}
 	if m.profileModal {
 		return "j/k scroll • pgup/pgdn page • o open in browser • b/q/esc close profile"
@@ -296,6 +296,14 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 		return base
 	}
 	width, height := modalDimensions(m.width, m.height)
+	innerWidth := width - 4
+	innerHeight := height - 2
+	legend := theme.subtle.Render(renderLegend(m))
+	legendHeight := lipgloss.Height(legend)
+	bodyHeight := max(0, innerHeight-legendHeight-1)
+
+	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, overlay)
+	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)
 	panel := lipgloss.NewStyle().
 		Width(width).
 		Height(height).
@@ -304,7 +312,7 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 		BorderForeground(lipgloss.Color("#3A4A55")).
 		Background(lipgloss.Color("#14181C")).
 		Foreground(lipgloss.Color("#E6F0F2"))
-	panelContent := lipgloss.Place(width-4, height-2, lipgloss.Left, lipgloss.Top, overlay)
+	panelContent := lipgloss.Place(innerWidth, innerHeight, lipgloss.Left, lipgloss.Top, content)
 	modal := panel.Render(panelContent)
 
 	dim := lipgloss.NewStyle().
@@ -320,6 +328,14 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 		return base
 	}
 	width, height := modalDimensions(m.width, m.height)
+	innerWidth := width - 4
+	innerHeight := height - 2
+	legend := theme.subtle.Render(renderLegend(m))
+	legendHeight := lipgloss.Height(legend)
+	bodyHeight := max(0, innerHeight-legendHeight-1)
+
+	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, overlay)
+	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)
 	panel := lipgloss.NewStyle().
 		Width(width).
 		Height(height).
@@ -328,7 +344,7 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 		Background(lipgloss.Color("#14181C")).
 		Foreground(lipgloss.Color("#E6F0F2")).
 		Padding(1, 2)
-	panelContent := lipgloss.Place(width-4, height-2, lipgloss.Left, lipgloss.Top, overlay)
+	panelContent := lipgloss.Place(innerWidth, innerHeight, lipgloss.Left, lipgloss.Top, content)
 	modal := panel.Render(panelContent)
 
 	dim := lipgloss.NewStyle().

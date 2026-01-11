@@ -110,6 +110,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, openBrowserCmd(letterboxd.ProfileURL(m.modalUser))
 			} else if m.activeTab == tabProfile {
 				return m, openBrowserCmd(letterboxd.ProfileURL(m.profileUser))
+			} else if m.activeTab == tabFilm {
+				return m, openBrowserCmd(m.film.URL)
 			}
 		case "esc":
 			if m.activeTab == tabFilm {
