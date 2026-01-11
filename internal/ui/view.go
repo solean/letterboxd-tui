@@ -30,7 +30,7 @@ func (m Model) View() string {
 		body = renderActivity(m.following, m.followErr, m.followList.selected, theme)
 	}
 
-	footer := theme.subtle.Render("tab/shift+tab switch • j/k move • pgup/pgdn scroll • enter view • b back • esc close film • o open browser • r refresh • q quit")
+	footer := theme.subtle.Render(renderLegend(m))
 	vp := m.viewport
 	vp.SetContent(body)
 	base := lipgloss.JoinVertical(lipgloss.Left, header, tabLine, vp.View(), footer)
@@ -95,6 +95,35 @@ func prevTab(current tab) tab {
 		}
 	}
 	return tabProfile
+}
+
+func renderLegend(m Model) string {
+	if m.activeTab == tabFilm {
+		return "j/k scroll • pgup/pgdn page • tab/shift+tab back • esc/q close film"
+	}
+	if m.profileModal {
+		return "j/k scroll • pgup/pgdn page • o open in browser • b/q/esc close profile"
+	}
+
+	var parts []string
+	parts = append(parts, "tab/shift+tab switch")
+	if m.activeTab == tabProfile {
+		parts = append(parts, "j/k scroll", "pgup/pgdn scroll")
+		if len(m.profileStack) > 0 {
+			parts = append(parts, "b back")
+		}
+		parts = append(parts, "o open profile in browser")
+	} else {
+		parts = append(parts, "j/k move", "pgup/pgdn page")
+		switch m.activeTab {
+		case tabDiary, tabWatchlist, tabActivity:
+			parts = append(parts, "enter view film")
+		case tabFollowing:
+			parts = append(parts, "enter view profile")
+		}
+	}
+	parts = append(parts, "r refresh", "q quit")
+	return strings.Join(parts, " • ")
 }
 
 func renderProfile(m Model, theme themeStyles) string {
