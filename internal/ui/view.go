@@ -390,7 +390,11 @@ func renderLogModal(base string, m Model, theme themeStyles) string {
 
 func renderLogForm(m Model, theme themeStyles) string {
 	var rows []string
-	rows = append(rows, theme.header.Render("Log diary entry"))
+	titleLine := m.film.Title
+	if m.film.Year != "" {
+		titleLine = fmt.Sprintf("%s (%s)", m.film.Title, m.film.Year)
+	}
+	rows = append(rows, theme.header.Render("Log diary entry"), theme.subtle.Render(titleLine))
 	if status := renderLogStatus(m, theme); status != "" {
 		rows = append(rows, status)
 	}
