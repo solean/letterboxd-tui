@@ -1,19 +1,40 @@
 package ui
 
 import (
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"letterboxd-tui/internal/letterboxd"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = ws.Width
+		m.height = ws.Height
 		bodyHeight := max(1, m.height-3)
 		m.viewport.Width = m.width
 		m.viewport.Height = bodyHeight
+		if m.logModal {
+			m.logForm.setSize(m.width)
+		}
+		return m, nil
+	}
+
+	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.logSpinner, cmd = m.logSpinner.Update(msg)
+		if m.logModal {
+			return m, cmd
+		}
+		return m, nil
+	}
+
+	if m.logModal {
+		return m.updateLogModal(msg)
+	}
+
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -105,6 +126,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, fetchProfileCmd(m.client, m.profileUser)
 				}
 			}
+		case "l":
+			if m.activeTab == tabFilm {
+				m = m.startLogModal()
+				return m, m.logSpinner.Tick
+			}
 		case "o":
 			if m.profileModal {
 				return m, openBrowserCmd(letterboxd.ProfileURL(m.modalUser))
@@ -159,6 +185,96 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.profileErr = msg.err
 		}
+	}
+	return m, nil
+}
+
+func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch typed := msg.(type) {
+	case tea.KeyMsg:
+		switch typed.String() {
+		case "esc", "q":
+			m.logModal = false
+			m.logForm.submitting = false
+			return m, nil
+		case "tab", "right":
+			m.logForm.focusField(m.logForm.focus + 1)
+			return m, nil
+		case "shift+tab", "left":
+			m.logForm.focusField(m.logForm.focus - 1)
+			return m, nil
+		case "enter", "ctrl+s":
+			if m.logForm.focus == logFieldSubmit {
+				if m.film.ViewingUID == "" {
+					m.logForm.status = "Missing film id; cannot log."
+					return m, nil
+				}
+				req := m.buildDiaryRequest()
+				m.logForm.submitting = true
+				return m, saveDiaryEntryCmd(m.client, req)
+			}
+			switch m.logForm.focus {
+			case logFieldRewatch:
+				m.logForm.rewatch = !m.logForm.rewatch
+				return m, nil
+			case logFieldSpoilers:
+				m.logForm.spoilers = !m.logForm.spoilers
+				return m, nil
+			case logFieldLiked:
+				m.logForm.liked = !m.logForm.liked
+				return m, nil
+			case logFieldPrivacy:
+				m.logForm.privacyIndex = (m.logForm.privacyIndex + 1) % len(privacyOptions)
+				return m, nil
+			case logFieldDraft:
+				m.logForm.draft = !m.logForm.draft
+				return m, nil
+			}
+		case " ":
+			switch m.logForm.focus {
+			case logFieldRewatch:
+				m.logForm.rewatch = !m.logForm.rewatch
+				return m, nil
+			case logFieldSpoilers:
+				m.logForm.spoilers = !m.logForm.spoilers
+				return m, nil
+			case logFieldLiked:
+				m.logForm.liked = !m.logForm.liked
+				return m, nil
+			case logFieldPrivacy:
+				m.logForm.privacyIndex = (m.logForm.privacyIndex + 1) % len(privacyOptions)
+				return m, nil
+			case logFieldDraft:
+				m.logForm.draft = !m.logForm.draft
+				return m, nil
+			}
+		}
+	case logResultMsg:
+		m.logForm.submitting = false
+		if typed.err != nil {
+			m.logForm.status = "Error: " + typed.err.Error()
+			return m, nil
+		}
+		m.logForm.status = "Saved!"
+		m.loading = true
+		return m, fetchFilmCmd(m.client, m.film.URL, m.username)
+	default:
+		if m.logForm.submitting {
+			var cmd tea.Cmd
+			m.logSpinner, cmd = m.logSpinner.Update(msg)
+			return m, cmd
+		}
+	}
+
+	switch m.logForm.focus {
+	case logFieldRating:
+		m.logForm.rating, _ = m.logForm.rating.Update(msg)
+	case logFieldDate:
+		m.logForm.date, _ = m.logForm.date.Update(msg)
+	case logFieldTags:
+		m.logForm.tags, _ = m.logForm.tags.Update(msg)
+	case logFieldReview:
+		m.logForm.review, _ = m.logForm.review.Update(msg)
 	}
 	return m, nil
 }

@@ -43,6 +43,9 @@ type Film struct {
 	AvgRating   string
 	Runtime     string
 	URL         string
+	Slug        string
+	FilmID      string
+	ViewingUID  string
 	Cast        []string
 	UserRating  string
 	UserStatus  string

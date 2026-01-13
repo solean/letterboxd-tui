@@ -1,6 +1,13 @@
 package ui
 
 import (
+	"errors"
+	"math"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 
 	"letterboxd-tui/internal/letterboxd"
@@ -55,6 +62,9 @@ type Model struct {
 	filmReturn      tab
 	profileModal    bool
 	modalUser       string
+	logModal        bool
+	logForm         logForm
+	logSpinner      spinner.Model
 }
 
 func NewModel(username string, client *letterboxd.Client) Model {
@@ -67,6 +77,7 @@ func NewModel(username string, client *letterboxd.Client) Model {
 		loading:     true,
 		viewport:    viewport.New(0, 0),
 		modalVP:     viewport.New(0, 0),
+		logSpinner:  spinner.New(spinner.WithSpinner(spinner.Dot)),
 	}
 }
 
@@ -247,6 +258,50 @@ func (m Model) goBackProfile() Model {
 	return m
 }
 
+func (m Model) startLogModal() Model {
+	if m.film.ViewingUID == "" {
+		m.filmErr = errors.New("cannot log this film (missing id)")
+		return m
+	}
+	form := newLogForm(m.film)
+	form.setSize(m.width)
+	m.logForm = form
+	m.logModal = true
+	return m
+}
+
+func (m Model) buildDiaryRequest() letterboxd.DiaryEntryRequest {
+	ratingStr := strings.TrimSpace(m.logForm.rating.Value())
+	ratingVal := 0
+	if ratingStr != "" {
+		if val, err := strconv.ParseFloat(ratingStr, 64); err == nil {
+			ratingVal = int(math.Round(val * 2))
+		}
+	}
+	req := letterboxd.DiaryEntryRequest{
+		ViewingUID:       m.film.ViewingUID,
+		WatchedDate:      strings.TrimSpace(m.logForm.date.Value()),
+		RatingValue:      clamp(ratingVal, 0, 10),
+		Review:           m.logForm.review.Value(),
+		ContainsSpoilers: m.logForm.spoilers,
+		Rewatch:          m.logForm.rewatch,
+		Tags:             strings.TrimSpace(m.logForm.tags.Value()),
+		Liked:            m.logForm.liked,
+		Privacy:          "",
+		Draft:            m.logForm.draft,
+		Referer:          m.film.URL,
+		JSONResponse:     true,
+	}
+	if req.WatchedDate == "" {
+		req.WatchedDate = time.Now().Format("2006-01-02")
+	}
+	priv := m.logForm.privacyLabel()
+	if priv != "" && priv != "Default" {
+		req.Privacy = priv
+	}
+	return req
+}
+
 func (m Model) modalOpen() bool {
-	return m.activeTab == tabFilm || m.profileModal
+	return m.activeTab == tabFilm || m.profileModal || m.logModal
 }

@@ -45,6 +45,10 @@ type openMsg struct {
 	err error
 }
 
+type logResultMsg struct {
+	err error
+}
+
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		fetchProfileCmd(m.client, m.profileUser),
@@ -105,6 +109,13 @@ func fetchActivityCmd(client *letterboxd.Client, username string, which tab) tea
 			return errMsg{err: fmt.Errorf("unknown activity tab")}
 		}
 		return activityMsg{tab: which, items: items, err: err}
+	}
+}
+
+func saveDiaryEntryCmd(client *letterboxd.Client, req letterboxd.DiaryEntryRequest) tea.Cmd {
+	return func() tea.Msg {
+		err := client.SaveDiaryEntry(req)
+		return logResultMsg{err: err}
 	}
 }
 

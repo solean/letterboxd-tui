@@ -30,6 +30,11 @@ func parseFilm(doc *goquery.Document, url string) (Film, error) {
 	film.AvgRating = avgRating
 	film.Runtime = runtime
 	film.Cast = cast
+	film.Slug = filmSlug(url)
+	film.FilmID = findFilmID(doc)
+	if film.FilmID != "" {
+		film.ViewingUID = "film:" + film.FilmID
+	}
 	return film, nil
 }
 
@@ -64,6 +69,38 @@ func parseTopBilledCast(doc *goquery.Document, limit int) []string {
 		return true
 	})
 	return cast
+}
+
+func findFilmID(doc *goquery.Document) string {
+	if id := strings.TrimSpace(doc.Find("[data-film-id]").First().AttrOr("data-film-id", "")); id != "" {
+		return id
+	}
+	var id string
+	doc.Find("script").EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		text := s.Text()
+		idx := strings.Index(text, "viewingable.uid")
+		if idx == -1 {
+			return true
+		}
+		start := strings.Index(text, "film:")
+		if start == -1 {
+			return true
+		}
+		start += len("film:")
+		var b strings.Builder
+		for i := start; i < len(text); i++ {
+			if text[i] >= '0' && text[i] <= '9' {
+				b.WriteByte(text[i])
+				continue
+			}
+			if b.Len() > 0 {
+				break
+			}
+		}
+		id = b.String()
+		return false
+	})
+	return strings.TrimSpace(id)
 }
 
 func parseUserFilm(doc *goquery.Document) (string, string) {

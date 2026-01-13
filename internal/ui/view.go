@@ -35,10 +35,13 @@ func (m Model) View() string {
 	vp.SetContent(body)
 	base := lipgloss.JoinVertical(lipgloss.Left, header, tabLine, vp.View(), footer)
 	if m.activeTab == tabFilm {
-		return renderFilmModal(base, m, theme)
+		base = renderFilmModal(base, m, theme)
 	}
 	if m.profileModal {
-		return renderProfileModal(base, m, theme)
+		base = renderProfileModal(base, m, theme)
+	}
+	if m.logModal {
+		base = renderLogModal(base, m, theme)
 	}
 	return base
 }
@@ -98,8 +101,11 @@ func prevTab(current tab) tab {
 }
 
 func renderLegend(m Model) string {
+	if m.logModal {
+		return "tab/shift+tab move • enter toggle/submit • ctrl+s submit • esc/q cancel"
+	}
 	if m.activeTab == tabFilm {
-		return "j/k scroll • pgup/pgdn page • o open film in browser • tab/shift+tab back • esc/q close film"
+		return "j/k scroll • pgup/pgdn page • l log entry • o open film in browser • tab/shift+tab back • esc/q close film"
 	}
 	if m.profileModal {
 		return "j/k scroll • pgup/pgdn page • o open in browser • b/q/esc close profile"
@@ -352,6 +358,104 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 		Foreground(lipgloss.Color("#5E6A72")).
 		Render(base)
 	return dim + "\n" + lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0E1114")))
+}
+
+func renderLogModal(base string, m Model, theme themeStyles) string {
+	form := renderLogForm(m, theme)
+	legend := theme.subtle.Render(renderLegend(m))
+	width, height := modalDimensions(m.width, m.height)
+	innerWidth := width - 4
+	innerHeight := height - 2
+	bodyHeight := max(0, innerHeight-lipgloss.Height(legend)-1)
+	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, form)
+	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)
+
+	panel := lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#3A4A55")).
+		Background(lipgloss.Color("#14181C")).
+		Foreground(lipgloss.Color("#E6F0F2"))
+	panelContent := lipgloss.Place(innerWidth, innerHeight, lipgloss.Left, lipgloss.Top, content)
+	modal := panel.Render(panelContent)
+
+	dim := lipgloss.NewStyle().
+		Background(lipgloss.Color("#0E1114")).
+		Foreground(lipgloss.Color("#5E6A72")).
+		Render(base)
+	return dim + "\n" + lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0E1114")))
+}
+
+func renderLogForm(m Model, theme themeStyles) string {
+	var rows []string
+	rows = append(rows, theme.header.Render("Log diary entry"))
+	if status := renderLogStatus(m, theme); status != "" {
+		rows = append(rows, status)
+	}
+
+	rows = append(rows, renderLogInput("Rating", m.logForm.rating.View(), m.logForm.focus == logFieldRating, theme))
+	rows = append(rows, renderLogToggle("Rewatch", m.logForm.rewatch, m.logForm.focus == logFieldRewatch, theme))
+	rows = append(rows, renderLogInput("Watched date", m.logForm.date.View(), m.logForm.focus == logFieldDate, theme))
+
+	review := m.logForm.review.View()
+	if m.logForm.focus == logFieldReview {
+		review = theme.itemSel.Render(review)
+	} else {
+		review = theme.item.Render(review)
+	}
+	rows = append(rows, theme.subtle.Render("Review"), review)
+
+	rows = append(rows, renderLogToggle("Contains spoilers", m.logForm.spoilers, m.logForm.focus == logFieldSpoilers, theme))
+	rows = append(rows, renderLogToggle("Like", m.logForm.liked, m.logForm.focus == logFieldLiked, theme))
+	rows = append(rows, renderLogInput("Tags", m.logForm.tags.View(), m.logForm.focus == logFieldTags, theme))
+	rows = append(rows, renderLogInput("Privacy", m.logForm.privacyLabel(), m.logForm.focus == logFieldPrivacy, theme))
+	rows = append(rows, renderLogToggle("Draft", m.logForm.draft, m.logForm.focus == logFieldDraft, theme))
+
+	submitLabel := "Submit"
+	if m.logForm.submitting {
+		submitLabel = "Submitting…"
+	}
+	submit := theme.item.Render(submitLabel)
+	if m.logForm.focus == logFieldSubmit {
+		submit = theme.itemSel.Render(submitLabel)
+	}
+	rows = append(rows, submit)
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func renderLogStatus(m Model, theme themeStyles) string {
+	if m.logForm.submitting {
+		return theme.subtle.Render(m.logSpinner.View() + " Submitting…")
+	}
+	if m.logForm.status == "" {
+		return ""
+	}
+	if strings.HasPrefix(m.logForm.status, "Error:") {
+		return theme.rateLow.Render(m.logForm.status)
+	}
+	return theme.rateHigh.Render(m.logForm.status)
+}
+
+func renderLogInput(label, value string, focused bool, theme themeStyles) string {
+	style := theme.item
+	if focused {
+		style = theme.itemSel
+	}
+	return style.Render(label + ": " + value)
+}
+
+func renderLogToggle(label string, on bool, focused bool, theme themeStyles) string {
+	state := "off"
+	if on {
+		state = "on"
+	}
+	style := theme.item
+	if focused {
+		style = theme.itemSel
+	}
+	return style.Render(label + ": " + state)
 }
 
 func renderActivity(items []letterboxd.ActivityItem, err error, selected int, theme themeStyles) string {
