@@ -491,7 +491,23 @@ func renderActivity(items []letterboxd.ActivityItem, err error, selected int, th
 
 func renderSummary(item letterboxd.ActivityItem, theme themeStyles) string {
 	if len(item.Parts) == 0 {
-		return compactSpaces(item.Summary)
+		if s := compactSpaces(item.Summary); s != "" {
+			return s
+		}
+		var parts []string
+		if item.Actor != "" {
+			parts = append(parts, theme.user.Render(item.Actor))
+		}
+		if verb := describeKind(item.Kind); verb != "" {
+			parts = append(parts, verb)
+		}
+		if item.Title != "" {
+			parts = append(parts, theme.movie.Render(item.Title))
+		}
+		if item.Rating != "" {
+			parts = append(parts, styleRating(item.Rating, theme))
+		}
+		return strings.Join(parts, " ")
 	}
 	var out strings.Builder
 	for _, part := range item.Parts {
@@ -510,6 +526,24 @@ func renderSummary(item letterboxd.ActivityItem, theme themeStyles) string {
 		appendWithSpacing(&out, text)
 	}
 	return strings.TrimSpace(out.String())
+}
+
+func describeKind(kind string) string {
+	kind = strings.ToLower(kind)
+	switch {
+	case strings.Contains(kind, "watchlist"):
+		return "added to watchlist"
+	case strings.Contains(kind, "like"):
+		return "liked"
+	case strings.Contains(kind, "review"):
+		return "reviewed"
+	case strings.Contains(kind, "diary") || strings.Contains(kind, "watch"):
+		return "watched"
+	case strings.Contains(kind, "list"):
+		return "listed"
+	default:
+		return ""
+	}
 }
 
 func renderBreadcrumbs(stack []string, current string, userStyle lipgloss.Style) string {
