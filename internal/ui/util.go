@@ -81,9 +81,14 @@ func appendWithSpacing(out *strings.Builder, text string) {
 }
 
 func modalDimensions(w, h int) (int, int) {
-	width := max(50, min(96, w-6))
-	height := max(10, min(24, h-6))
+	width := max(50, min(w-6, int(float64(w)*0.9)))
+	height := max(12, min(h-6, int(float64(h)*0.9)))
 	return width, height
+}
+
+func modalContentWidth(w, h int) int {
+	width, _ := modalDimensions(w, h)
+	return max(10, width-4)
 }
 
 func formatWhen(when string) string {

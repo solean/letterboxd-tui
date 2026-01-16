@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"letterboxd-tui/internal/letterboxd"
 )
@@ -17,16 +18,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.logModal {
 			m.logForm.setSize(m.width)
 		}
+		m.refreshModalViewport()
 		return m, nil
 	}
 
-	switch msg := msg.(type) {
+	switch sm := msg.(type) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
-		m.logSpinner, cmd = m.logSpinner.Update(msg)
+		m.logSpinner, cmd = m.logSpinner.Update(sm)
 		if m.logModal {
 			return m, cmd
 		}
+		return m, nil
+	}
+
+	if rm, ok := msg.(reviewsMsg); ok {
+		if rm.kind == "popular" {
+			m.popReviews = rm.reviews
+			m.popReviewsErr = rm.err
+		} else {
+			m.friendReviews = rm.reviews
+			m.friendReviewsErr = rm.err
+		}
+		m.refreshModalViewport()
 		return m, nil
 	}
 
@@ -34,9 +48,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateLogModal(msg)
 	}
 
-	switch msg := msg.(type) {
+	switch ev := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		switch ev.String() {
 		case "ctrl+c", "q":
 			if m.modalOpen() {
 				if m.activeTab == tabFilm {
@@ -148,45 +162,79 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case profileMsg:
-		if msg.modal {
-			m.modalProfile = msg.profile
-			m.modalProfileErr = msg.err
+		if ev.modal {
+			m.modalProfile = ev.profile
+			m.modalProfileErr = ev.err
 			m.modalLoading = false
+			m.refreshModalViewport()
 		} else {
-			m.profile = msg.profile
-			m.profileErr = msg.err
+			m.profile = ev.profile
+			m.profileErr = ev.err
 			m.loading = false
 		}
 	case diaryMsg:
-		m.diary = msg.items
-		m.diaryErr = msg.err
+		m.diary = ev.items
+		m.diaryErr = ev.err
 		m.loading = false
 	case watchlistMsg:
-		m.watchlist = msg.items
-		m.watchErr = msg.err
+		m.watchlist = ev.items
+		m.watchErr = ev.err
 		m.loading = false
 	case filmMsg:
-		m.film = msg.film
-		m.filmErr = msg.err
+		m.film = ev.film
+		m.filmErr = ev.err
 		m.loading = false
+		m.refreshModalViewport()
+		if ev.film.Slug != "" {
+			return m, tea.Batch(
+				fetchReviewsCmd(m.client, ev.film.Slug, "popular"),
+				fetchReviewsCmd(m.client, ev.film.Slug, "friends"),
+			)
+		}
 	case activityMsg:
-		if msg.tab == tabActivity {
-			m.activity = msg.items
-			m.activityErr = msg.err
+		if ev.tab == tabActivity {
+			m.activity = ev.items
+			m.activityErr = ev.err
 		} else {
-			m.following = msg.items
-			m.followErr = msg.err
+			m.following = ev.items
+			m.followErr = ev.err
 		}
 		m.loading = false
 	case errMsg:
-		m.diaryErr = msg.err
+		m.diaryErr = ev.err
 		m.loading = false
 	case openMsg:
-		if msg.err != nil {
-			m.profileErr = msg.err
+		if ev.err != nil {
+			m.profileErr = ev.err
 		}
 	}
 	return m, nil
+}
+
+func (m *Model) refreshModalViewport() {
+	if m.logModal {
+		return
+	}
+	if !m.profileModal && m.activeTab != tabFilm {
+		return
+	}
+	theme := newTheme()
+	legend := theme.subtle.Render(renderLegend(*m))
+	width, height := modalDimensions(m.width, m.height)
+	innerWidth := width - 4
+	innerHeight := height - 2
+	bodyHeight := max(1, innerHeight-lipgloss.Height(legend)-1)
+
+	m.modalVP.Width = innerWidth
+	m.modalVP.Height = bodyHeight
+
+	if m.profileModal {
+		content := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme)
+		m.modalVP.SetContent(content)
+		return
+	}
+	content := renderFilm(*m, theme)
+	m.modalVP.SetContent(content)
 }
 
 func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {

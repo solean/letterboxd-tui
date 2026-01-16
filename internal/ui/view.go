@@ -252,6 +252,7 @@ func renderFilm(m Model, theme themeStyles) string {
 		return theme.dim.Render("No film details found.")
 	}
 	var rows []string
+	wrapWidth := max(40, modalContentWidth(m.width, m.height)-2)
 	title := m.film.Title
 	if m.film.Year != "" {
 		title = fmt.Sprintf("%s (%s)", title, m.film.Year)
@@ -285,20 +286,25 @@ func renderFilm(m Model, theme themeStyles) string {
 	}
 	if len(m.film.Cast) > 0 {
 		rows = append(rows, "", theme.subtle.Render("Top Billed Cast"))
-		rows = append(rows, theme.item.Render(strings.Join(m.film.Cast, ", ")))
+		rows = append(rows, theme.item.Render(wrapText(strings.Join(m.film.Cast, ", "), wrapWidth)))
 	}
 	if m.film.Description != "" {
-		rows = append(rows, "", wrapText(m.film.Description, max(40, m.width-4)))
+		rows = append(rows, "", wrapText(m.film.Description, wrapWidth))
 	}
 	if m.film.URL != "" {
-		rows = append(rows, "", theme.dim.Render(m.film.URL))
+		rows = append(rows, "", theme.dim.Render(truncate(m.film.URL, wrapWidth)))
+	}
+	if len(m.friendReviews) > 0 || m.friendReviewsErr != nil {
+		rows = append(rows, "", renderReviews("Friends' reviews", m.friendReviews, m.friendReviewsErr, wrapWidth, theme))
+	}
+	if len(m.popReviews) > 0 || m.popReviewsErr != nil {
+		rows = append(rows, "", renderReviews("Popular reviews", m.popReviews, m.popReviewsErr, wrapWidth, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func renderFilmModal(base string, m Model, theme themeStyles) string {
-	overlay := renderFilm(m, theme)
-	if overlay == "" {
+	if m.modalVP.View() == "" && renderFilm(m, theme) == "" {
 		return base
 	}
 	width, height := modalDimensions(m.width, m.height)
@@ -306,9 +312,16 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 	innerHeight := height - 2
 	legend := theme.subtle.Render(renderLegend(m))
 	legendHeight := lipgloss.Height(legend)
-	bodyHeight := max(0, innerHeight-legendHeight-1)
+	bodyHeight := max(1, innerHeight-legendHeight-1)
 
-	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, overlay)
+	vp := m.modalVP
+	vp.Width = innerWidth
+	vp.Height = bodyHeight
+	body := vp.View()
+	if body == "" {
+		vp.SetContent(renderFilm(m, theme))
+		body = vp.View()
+	}
 	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)
 	panel := lipgloss.NewStyle().
 		Width(width).
@@ -329,8 +342,7 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 }
 
 func renderProfileModal(base string, m Model, theme themeStyles) string {
-	overlay := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme)
-	if overlay == "" {
+	if m.modalVP.View() == "" && renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme) == "" {
 		return base
 	}
 	width, height := modalDimensions(m.width, m.height)
@@ -338,9 +350,16 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 	innerHeight := height - 2
 	legend := theme.subtle.Render(renderLegend(m))
 	legendHeight := lipgloss.Height(legend)
-	bodyHeight := max(0, innerHeight-legendHeight-1)
+	bodyHeight := max(1, innerHeight-legendHeight-1)
 
-	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, overlay)
+	vp := m.modalVP
+	vp.Width = innerWidth
+	vp.Height = bodyHeight
+	body := vp.View()
+	if body == "" {
+		vp.SetContent(renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme))
+		body = vp.View()
+	}
 	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)
 	panel := lipgloss.NewStyle().
 		Width(width).
@@ -367,6 +386,7 @@ func renderLogModal(base string, m Model, theme themeStyles) string {
 	innerWidth := width - 4
 	innerHeight := height - 2
 	bodyHeight := max(0, innerHeight-lipgloss.Height(legend)-1)
+	bodyHeight = max(1, bodyHeight)
 	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, form)
 	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)
 
@@ -460,6 +480,28 @@ func renderLogToggle(label string, on bool, focused bool, theme themeStyles) str
 		style = theme.itemSel
 	}
 	return style.Render(label + ": " + state)
+}
+
+func renderReviews(title string, reviews []letterboxd.Review, err error, width int, theme themeStyles) string {
+	if err != nil {
+		return theme.dim.Render("Error: " + err.Error())
+	}
+	if len(reviews) == 0 {
+		return theme.dim.Render("No reviews found.")
+	}
+	var rows []string
+	rows = append(rows, theme.subtle.Render(title))
+	for _, r := range reviews {
+		line := theme.user.Render(r.Author)
+		if r.Rating != "" {
+			line += " " + styleRating(r.Rating, theme)
+		}
+		rows = append(rows, truncate(line, width))
+		if r.Text != "" {
+			rows = append(rows, wrapText(r.Text, width))
+		}
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
 func renderActivity(items []letterboxd.ActivityItem, err error, selected int, theme themeStyles) string {

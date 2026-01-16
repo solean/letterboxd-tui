@@ -25,6 +25,12 @@ type filmMsg struct {
 	err  error
 }
 
+type reviewsMsg struct {
+	reviews []letterboxd.Review
+	err     error
+	kind    string
+}
+
 type profileMsg struct {
 	profile letterboxd.Profile
 	err     error
@@ -91,6 +97,24 @@ func fetchFilmCmd(client *letterboxd.Client, filmURL, username string) tea.Cmd {
 	return func() tea.Msg {
 		film, err := client.Film(filmURL, username)
 		return filmMsg{film: film, err: err}
+	}
+}
+
+func fetchReviewsCmd(client *letterboxd.Client, slug string, which string) tea.Cmd {
+	return func() tea.Msg {
+		var (
+			revs []letterboxd.Review
+			err  error
+		)
+		switch which {
+		case "popular":
+			revs, err = client.PopularReviews(slug)
+		case "friends":
+			revs, err = client.FriendReviews(slug)
+		default:
+			err = fmt.Errorf("unknown reviews kind")
+		}
+		return reviewsMsg{reviews: revs, err: err, kind: which}
 	}
 }
 

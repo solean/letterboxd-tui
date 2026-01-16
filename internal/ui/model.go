@@ -29,42 +29,46 @@ type listState struct {
 }
 
 type Model struct {
-	username        string
-	profileUser     string
-	profileStack    []string
-	client          *letterboxd.Client
-	width           int
-	height          int
-	activeTab       tab
-	lastTab         tab
-	profile         letterboxd.Profile
-	diary           []letterboxd.DiaryEntry
-	watchlist       []letterboxd.WatchlistItem
-	activity        []letterboxd.ActivityItem
-	following       []letterboxd.ActivityItem
-	film            letterboxd.Film
-	modalProfile    letterboxd.Profile
-	profileErr      error
-	diaryErr        error
-	watchErr        error
-	activityErr     error
-	followErr       error
-	filmErr         error
-	modalProfileErr error
-	loading         bool
-	modalLoading    bool
-	diaryList       listState
-	watchList       listState
-	actList         listState
-	followList      listState
-	viewport        viewport.Model
-	modalVP         viewport.Model
-	filmReturn      tab
-	profileModal    bool
-	modalUser       string
-	logModal        bool
-	logForm         logForm
-	logSpinner      spinner.Model
+	username         string
+	profileUser      string
+	profileStack     []string
+	client           *letterboxd.Client
+	width            int
+	height           int
+	activeTab        tab
+	lastTab          tab
+	profile          letterboxd.Profile
+	diary            []letterboxd.DiaryEntry
+	watchlist        []letterboxd.WatchlistItem
+	activity         []letterboxd.ActivityItem
+	following        []letterboxd.ActivityItem
+	film             letterboxd.Film
+	modalProfile     letterboxd.Profile
+	popReviews       []letterboxd.Review
+	friendReviews    []letterboxd.Review
+	profileErr       error
+	diaryErr         error
+	watchErr         error
+	activityErr      error
+	followErr        error
+	filmErr          error
+	popReviewsErr    error
+	friendReviewsErr error
+	modalProfileErr  error
+	loading          bool
+	modalLoading     bool
+	diaryList        listState
+	watchList        listState
+	actList          listState
+	followList       listState
+	viewport         viewport.Model
+	modalVP          viewport.Model
+	filmReturn       tab
+	profileModal     bool
+	modalUser        string
+	logModal         bool
+	logForm          logForm
+	logSpinner       spinner.Model
 }
 
 func NewModel(username string, client *letterboxd.Client) Model {
@@ -207,6 +211,7 @@ func (m Model) openSelectedProfile() Model {
 	m.modalLoading = true
 	m.profileModal = true
 	m.modalVP.YOffset = 0
+	m.refreshModalViewport()
 	return m
 }
 
@@ -243,6 +248,8 @@ func (m Model) openSelectedFilm() Model {
 	m.activeTab = tabFilm
 	m.loading = true
 	m.viewport.YOffset = 0
+	m.modalVP.YOffset = 0
+	m.refreshModalViewport()
 	return m
 }
 
