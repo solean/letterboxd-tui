@@ -531,9 +531,9 @@ func renderLogInput(label, value string, focused bool, theme themeStyles) string
 }
 
 func renderLogToggle(label string, on bool, focused bool, theme themeStyles) string {
-	state := "off"
+	state := "no"
 	if on {
-		state = "on"
+		state = "yes"
 	}
 	style := theme.item
 	if focused {
