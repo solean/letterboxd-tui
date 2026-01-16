@@ -25,6 +25,11 @@ type filmMsg struct {
 	err  error
 }
 
+type searchMsg struct {
+	results []letterboxd.SearchResult
+	err     error
+}
+
 type reviewsMsg struct {
 	reviews []letterboxd.Review
 	err     error
@@ -97,6 +102,13 @@ func fetchFilmCmd(client *letterboxd.Client, filmURL, username string) tea.Cmd {
 	return func() tea.Msg {
 		film, err := client.Film(filmURL, username)
 		return filmMsg{film: film, err: err}
+	}
+}
+
+func fetchSearchCmd(client *letterboxd.Client, query string) tea.Cmd {
+	return func() tea.Msg {
+		results, err := client.SearchFilms(query)
+		return searchMsg{results: results, err: err}
 	}
 }
 

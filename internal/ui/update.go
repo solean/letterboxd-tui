@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,6 +20,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.logModal {
 			m.logForm.setSize(m.width)
 		}
+		m.searchInput.Width = max(10, m.width-4)
 		m.refreshModalViewport()
 		return m, nil
 	}
@@ -50,6 +53,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch ev := msg.(type) {
 	case tea.KeyMsg:
+		if cmd, handled := m.handleSearchKey(ev); handled {
+			return m, cmd
+		}
 		switch ev.String() {
 		case "ctrl+c", "q":
 			if m.modalOpen() {
@@ -191,6 +197,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				fetchReviewsCmd(m.client, ev.film.Slug, "friends"),
 			)
 		}
+	case searchMsg:
+		m.searchResults = ev.results
+		m.searchErr = ev.err
+		m.searchLoading = false
+		m.searchList.selected = 0
+		m.searchFocusInput = false
+		m.syncViewportToSelection()
 	case activityMsg:
 		if ev.tab == tabActivity {
 			m.activity = ev.items
@@ -235,6 +248,78 @@ func (m *Model) refreshModalViewport() {
 	}
 	content := renderFilm(*m, theme)
 	m.modalVP.SetContent(content)
+}
+
+func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+	if m.activeTab != tabSearch {
+		return nil, false
+	}
+	switch msg.String() {
+	case "ctrl+c", "q", "tab", "shift+tab", "left", "right":
+		return nil, false
+	case "enter":
+		if m.searchFocusInput {
+			query := strings.TrimSpace(m.searchInput.Value())
+			if query == "" {
+				return nil, true
+			}
+			m.searchLoading = true
+			m.searchErr = nil
+			m.searchResults = nil
+			m.searchFocusInput = false
+			m.searchInput.Blur()
+			return fetchSearchCmd(m.client, query), true
+		}
+		updated := m.openSelectedFilm()
+		*m = updated
+		if m.activeTab == tabFilm {
+			return fetchFilmCmd(m.client, m.film.URL, m.username), true
+		}
+		return nil, true
+	case "ctrl+f":
+		m.searchFocusInput = true
+		m.searchInput.Focus()
+		return nil, true
+	case "esc":
+		m.searchFocusInput = false
+		m.searchInput.Blur()
+		return nil, true
+	case "j", "down":
+		if m.searchFocusInput {
+			break
+		}
+		m.moveSelection(1)
+		m.syncViewportToSelection()
+		return nil, true
+	case "k", "up":
+		if m.searchFocusInput {
+			break
+		}
+		m.moveSelection(-1)
+		m.syncViewportToSelection()
+		return nil, true
+	case "pgdown":
+		if m.searchFocusInput {
+			break
+		}
+		m.pageSelection(1)
+		m.syncViewportToSelection()
+		return nil, true
+	case "pgup":
+		if m.searchFocusInput {
+			break
+		}
+		m.pageSelection(-1)
+		m.syncViewportToSelection()
+		return nil, true
+	}
+
+	if m.searchFocusInput {
+		var cmd tea.Cmd
+		m.searchInput, cmd = m.searchInput.Update(msg)
+		return cmd, true
+	}
+	return nil, false
 }
 
 func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {

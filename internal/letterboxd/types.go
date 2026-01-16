@@ -67,3 +67,11 @@ type SummaryPart struct {
 	Text string
 	Kind string
 }
+
+type SearchResult struct {
+	Title   string
+	Year    string
+	FilmURL string
+	Slug    string
+	FilmID  string
+}

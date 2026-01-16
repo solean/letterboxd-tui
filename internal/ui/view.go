@@ -28,6 +28,8 @@ func (m Model) View() string {
 		body = renderActivity(m.activity, m.activityErr, m.actList.selected, m.width, theme)
 	case tabFollowing:
 		body = renderActivity(m.following, m.followErr, m.followList.selected, m.width, theme)
+	case tabSearch:
+		body = renderSearch(m, theme)
 	}
 
 	footer := theme.subtle.Render(renderLegend(m))
@@ -47,7 +49,7 @@ func (m Model) View() string {
 }
 
 func renderTabs(m Model, theme themeStyles) string {
-	tabs := []string{"Profile", "Diary", "Friends", "My Activity", "Watchlist"}
+	tabs := []string{"Profile", "Diary", "Friends", "My Activity", "Watchlist", "Search"}
 	var out []string
 	for i, label := range tabs {
 		if visibleTabByIndex(i) == m.activeTab {
@@ -60,7 +62,7 @@ func renderTabs(m Model, theme themeStyles) string {
 }
 
 func visibleTabs() []tab {
-	return []tab{tabProfile, tabDiary, tabFollowing, tabActivity, tabWatchlist}
+	return []tab{tabProfile, tabDiary, tabFollowing, tabActivity, tabWatchlist, tabSearch}
 }
 
 func visibleTabByIndex(i int) tab {
@@ -103,6 +105,12 @@ func prevTab(current tab) tab {
 func renderLegend(m Model) string {
 	if m.logModal {
 		return "tab/shift+tab move • enter toggle/submit • ctrl+s submit • esc/q cancel"
+	}
+	if m.activeTab == tabSearch {
+		if m.searchFocusInput {
+			return "type query • enter search • esc results • tab/shift+tab switch • q quit"
+		}
+		return "j/k move • pgup/pgdn page • enter view • ctrl+f edit query • tab/shift+tab switch • q quit"
 	}
 	if m.activeTab == tabFilm {
 		return "j/k scroll • pgup/pgdn page • l log entry • o open film in browser • tab/shift+tab back • esc/q close film"
@@ -227,6 +235,39 @@ func renderProfileContent(profile letterboxd.Profile, err error, loading bool, p
 	}
 	if len(rows) == 0 {
 		return theme.dim.Render("No profile data found.")
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func renderSearch(m Model, theme themeStyles) string {
+	var rows []string
+	rows = append(rows, theme.subtle.Render("Search films"))
+
+	line := "Query: " + m.searchInput.View()
+	if m.searchFocusInput {
+		rows = append(rows, theme.itemSel.Render(line))
+	} else {
+		rows = append(rows, theme.item.Render(line))
+	}
+
+	if m.searchLoading {
+		rows = append(rows, theme.dim.Render("Searching…"))
+	}
+	if m.searchErr != nil {
+		rows = append(rows, theme.dim.Render("Error: "+m.searchErr.Error()))
+	}
+	if !m.searchLoading && m.searchErr == nil && len(m.searchResults) == 0 {
+		rows = append(rows, theme.dim.Render("No results yet."))
+	}
+
+	width := max(40, m.width-2)
+	for i, r := range m.searchResults {
+		title := r.Title
+		if r.Year != "" {
+			title = fmt.Sprintf("%s (%s)", r.Title, r.Year)
+		}
+		selected := i == m.searchList.selected && !m.searchFocusInput
+		rows = append(rows, renderSelectableLine(title, selected, width, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }

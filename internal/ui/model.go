@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 
 	"letterboxd-tui/internal/letterboxd"
@@ -19,6 +20,7 @@ const (
 	tabProfile tab = iota
 	tabDiary
 	tabWatchlist
+	tabSearch
 	tabFilm
 	tabFollowing
 	tabActivity
@@ -42,6 +44,7 @@ type Model struct {
 	watchlist        []letterboxd.WatchlistItem
 	activity         []letterboxd.ActivityItem
 	following        []letterboxd.ActivityItem
+	searchResults    []letterboxd.SearchResult
 	film             letterboxd.Film
 	modalProfile     letterboxd.Profile
 	popReviews       []letterboxd.Review
@@ -54,13 +57,16 @@ type Model struct {
 	filmErr          error
 	popReviewsErr    error
 	friendReviewsErr error
+	searchErr        error
 	modalProfileErr  error
 	loading          bool
 	modalLoading     bool
+	searchLoading    bool
 	diaryList        listState
 	watchList        listState
 	actList          listState
 	followList       listState
+	searchList       listState
 	viewport         viewport.Model
 	modalVP          viewport.Model
 	filmReturn       tab
@@ -69,19 +75,26 @@ type Model struct {
 	logModal         bool
 	logForm          logForm
 	logSpinner       spinner.Model
+	searchInput      textinput.Model
+	searchFocusInput bool
 }
 
 func NewModel(username string, client *letterboxd.Client) Model {
+	searchInput := textinput.New()
+	searchInput.Placeholder = "Search films"
+	searchInput.CharLimit = 80
 	return Model{
-		username:    username,
-		profileUser: username,
-		client:      client,
-		activeTab:   tabProfile,
-		lastTab:     tabProfile,
-		loading:     true,
-		viewport:    viewport.New(0, 0),
-		modalVP:     viewport.New(0, 0),
-		logSpinner:  spinner.New(spinner.WithSpinner(spinner.Dot)),
+		username:         username,
+		profileUser:      username,
+		client:           client,
+		activeTab:        tabProfile,
+		lastTab:          tabProfile,
+		loading:          true,
+		viewport:         viewport.New(0, 0),
+		modalVP:          viewport.New(0, 0),
+		logSpinner:       spinner.New(spinner.WithSpinner(spinner.Dot)),
+		searchInput:      searchInput,
+		searchFocusInput: true,
 	}
 }
 
@@ -107,6 +120,11 @@ func (m *Model) moveSelection(delta int) {
 			return
 		}
 		m.followList.selected = clamp(m.followList.selected+delta, 0, len(m.following)-1)
+	case tabSearch:
+		if len(m.searchResults) == 0 {
+			return
+		}
+		m.searchList.selected = clamp(m.searchList.selected+delta, 0, len(m.searchResults)-1)
 	}
 }
 
@@ -115,11 +133,17 @@ func (m *Model) resetTabPosition() {
 		return
 	}
 	m.viewport.YOffset = 0
+	m.searchInput.Blur()
+	m.searchFocusInput = false
 	switch m.activeTab {
 	case tabDiary:
 		m.diaryList.selected = 0
 	case tabWatchlist:
 		m.watchList.selected = 0
+	case tabSearch:
+		m.searchList.selected = 0
+		m.searchFocusInput = true
+		m.searchInput.Focus()
 	case tabFilm:
 		m.filmErr = nil
 	case tabActivity:
@@ -153,6 +177,11 @@ func (m *Model) pageSelection(dir int) {
 			return
 		}
 		m.followList.selected = clamp(m.followList.selected+dir*step, 0, len(m.following)-1)
+	case tabSearch:
+		if len(m.searchResults) == 0 {
+			return
+		}
+		m.searchList.selected = clamp(m.searchList.selected+dir*step, 0, len(m.searchResults)-1)
 	}
 }
 
@@ -171,6 +200,9 @@ func (m *Model) syncViewportToSelection() {
 	case tabFollowing:
 		total = len(m.following)
 		selected = m.followList.selected
+	case tabSearch:
+		total = len(m.searchResults)
+		selected = m.searchList.selected
 	default:
 		return
 	}
@@ -238,6 +270,11 @@ func (m Model) openSelectedFilm() Model {
 			return m
 		}
 		filmURL = m.following[m.followList.selected].FilmURL
+	case tabSearch:
+		if len(m.searchResults) == 0 {
+			return m
+		}
+		filmURL = m.searchResults[m.searchList.selected].FilmURL
 	}
 	filmURL = letterboxd.NormalizeFilmURL(filmURL)
 	if filmURL == "" {
