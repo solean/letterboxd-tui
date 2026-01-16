@@ -25,9 +25,9 @@ func (m Model) View() string {
 	case tabFilm:
 		body = renderFilm(m, theme)
 	case tabActivity:
-		body = renderActivity(m.activity, m.activityErr, m.actList.selected, theme)
+		body = renderActivity(m.activity, m.activityErr, m.actList.selected, m.width, theme)
 	case tabFollowing:
-		body = renderActivity(m.following, m.followErr, m.followList.selected, theme)
+		body = renderActivity(m.following, m.followErr, m.followList.selected, m.width, theme)
 	}
 
 	footer := theme.subtle.Render(renderLegend(m))
@@ -164,12 +164,7 @@ func renderDiary(m Model, theme themeStyles) string {
 			flags += " ✎"
 		}
 		line := fmt.Sprintf("%s %s %s%s", date, entry.Title, rating, flags)
-		line = truncate(line, width)
-		style := theme.item
-		if i == m.diaryList.selected {
-			style = theme.itemSel
-		}
-		rows = append(rows, style.Render(line))
+		rows = append(rows, renderSelectableLine(line, i == m.diaryList.selected, width, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -191,12 +186,7 @@ func renderWatchlist(m Model, theme themeStyles) string {
 		if item.Year != "" {
 			title = fmt.Sprintf("%s (%s)", item.Title, item.Year)
 		}
-		line := truncate(title, width)
-		style := theme.item
-		if i == m.watchList.selected {
-			style = theme.itemSel
-		}
-		rows = append(rows, style.Render(line))
+		rows = append(rows, renderSelectableLine(title, i == m.watchList.selected, width, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -482,6 +472,20 @@ func renderLogToggle(label string, on bool, focused bool, theme themeStyles) str
 	return style.Render(label + ": " + state)
 }
 
+func renderSelectableLine(line string, selected bool, width int, theme themeStyles) string {
+	prefix := "  "
+	style := theme.item
+	if selected {
+		prefix = "> "
+		style = theme.itemSel
+	}
+	line = prefix + line
+	if width > 0 {
+		line = truncate(line, width)
+	}
+	return style.Render(line)
+}
+
 func renderReviews(title string, reviews []letterboxd.Review, err error, width int, theme themeStyles) string {
 	if err != nil {
 		return theme.dim.Render("Error: " + err.Error())
@@ -504,7 +508,7 @@ func renderReviews(title string, reviews []letterboxd.Review, err error, width i
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-func renderActivity(items []letterboxd.ActivityItem, err error, selected int, theme themeStyles) string {
+func renderActivity(items []letterboxd.ActivityItem, err error, selected int, width int, theme themeStyles) string {
 	if err != nil {
 		return theme.dim.Render("Error: " + err.Error())
 	}
@@ -512,6 +516,7 @@ func renderActivity(items []letterboxd.ActivityItem, err error, selected int, th
 		return theme.dim.Render("No activity found.")
 	}
 	var rows []string
+	width = max(40, width-2)
 	for i, item := range items {
 		when := formatWhen(item.When)
 		if when == "" {
@@ -522,11 +527,7 @@ func renderActivity(items []letterboxd.ActivityItem, err error, selected int, th
 			summary = item.Title
 		}
 		line := fmt.Sprintf("%s %s", theme.badge.Render(when), summary)
-		style := theme.item
-		if i == selected {
-			style = theme.itemSel
-		}
-		rows = append(rows, style.Render(line))
+		rows = append(rows, renderSelectableLine(line, i == selected, width, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
