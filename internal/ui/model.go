@@ -42,6 +42,7 @@ type Model struct {
 	profile          letterboxd.Profile
 	diary            []letterboxd.DiaryEntry
 	watchlist        []letterboxd.WatchlistItem
+	watchlistLoaded  bool
 	activity         []letterboxd.ActivityItem
 	following        []letterboxd.ActivityItem
 	searchResults    []letterboxd.SearchResult
@@ -75,6 +76,8 @@ type Model struct {
 	logModal         bool
 	logForm          logForm
 	logSpinner       spinner.Model
+	watchlistStatus  string
+	watchlistPending bool
 	searchInput      textinput.Model
 	searchFocusInput bool
 }
@@ -281,6 +284,8 @@ func (m Model) openSelectedFilm() Model {
 		return m
 	}
 	m.film = letterboxd.Film{URL: filmURL}
+	m.watchlistPending = false
+	m.watchlistStatus = ""
 	m.filmReturn = m.activeTab
 	m.activeTab = tabFilm
 	m.loading = true
@@ -344,6 +349,44 @@ func (m Model) buildDiaryRequest() letterboxd.DiaryEntryRequest {
 		req.Privacy = priv
 	}
 	return req
+}
+
+func (m Model) buildWatchlistRequest() (letterboxd.WatchlistRequest, error) {
+	slug := strings.TrimSpace(m.film.Slug)
+	if slug == "" {
+		slug = letterboxd.FilmSlug(m.film.URL)
+	}
+	watchlistID := strings.TrimSpace(m.film.WatchlistID)
+	if watchlistID == "" && slug == "" && strings.TrimSpace(m.film.FilmID) == "" {
+		return letterboxd.WatchlistRequest{}, errors.New("missing film id")
+	}
+	req := letterboxd.WatchlistRequest{
+		WatchlistID: watchlistID,
+		FilmID:       m.film.FilmID,
+		FilmSlug:     slug,
+		Referer:      m.film.URL,
+		JSONResponse: true,
+	}
+	return req, nil
+}
+
+func (m Model) watchlistState() (bool, bool) {
+	if m.film.WatchlistOK {
+		return m.film.InWatchlist, true
+	}
+	if !m.watchlistLoaded || m.watchErr != nil {
+		return false, false
+	}
+	filmURL := letterboxd.NormalizeFilmURL(m.film.URL)
+	if filmURL == "" {
+		return false, false
+	}
+	for _, item := range m.watchlist {
+		if letterboxd.NormalizeFilmURL(item.FilmURL) == filmURL {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 func (m Model) modalOpen() bool {

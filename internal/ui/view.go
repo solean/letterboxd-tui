@@ -113,7 +113,11 @@ func renderLegend(m Model) string {
 		return "j/k move • pgup/pgdn page • enter view • ctrl+f edit query • tab/shift+tab switch • q quit"
 	}
 	if m.activeTab == tabFilm {
-		return "j/k scroll • pgup/pgdn page • l log entry • o open film in browser • tab/shift+tab back • esc/q close film"
+		watchlistHint := "w add to watchlist"
+		if inWatchlist, ok := m.watchlistState(); ok && inWatchlist {
+			watchlistHint = "u remove from watchlist"
+		}
+		return "j/k scroll • pgup/pgdn page • l log entry • " + watchlistHint + " • o open film in browser • tab/shift+tab back • esc/q close film"
 	}
 	if m.profileModal {
 		return "j/k scroll • pgup/pgdn page • o open in browser • b/q/esc close profile"
@@ -312,8 +316,20 @@ func renderFilm(m Model, theme themeStyles) string {
 				userLine += " "
 			}
 			userLine += styleRating(m.film.UserRating, theme)
+			rows = append(rows, theme.subtle.Render(userLine))
 		}
-		rows = append(rows, theme.subtle.Render(userLine))
+	}
+	if inWatchlist, ok := m.watchlistState(); ok {
+		label := ""
+		style := theme.subtle
+		if inWatchlist {
+			label = "On your watchlist"
+			style = theme.rateHigh
+		}
+		rows = append(rows, style.Render(label))
+	}
+	if m.watchlistStatus != "" {
+		rows = append(rows, renderWatchlistStatus(m.watchlistStatus, theme))
 	}
 	if len(m.film.Cast) > 0 {
 		rows = append(rows, "", theme.subtle.Render("Top Billed Cast"))
@@ -491,6 +507,19 @@ func renderLogStatus(m Model, theme themeStyles) string {
 		return theme.rateLow.Render(m.logForm.status)
 	}
 	return theme.rateHigh.Render(m.logForm.status)
+}
+
+func renderWatchlistStatus(status string, theme themeStyles) string {
+	if status == "" {
+		return ""
+	}
+	if strings.HasPrefix(status, "Error:") {
+		return theme.rateLow.Render(status)
+	}
+	if strings.HasPrefix(status, "Adding") || strings.HasPrefix(status, "Removing") {
+		return theme.subtle.Render(status)
+	}
+	return theme.rateHigh.Render(status)
 }
 
 func renderLogInput(label, value string, focused bool, theme themeStyles) string {

@@ -60,6 +60,11 @@ type logResultMsg struct {
 	err error
 }
 
+type watchlistResultMsg struct {
+	err         error
+	inWatchlist bool
+}
+
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		fetchProfileCmd(m.client, m.profileUser),
@@ -152,6 +157,13 @@ func saveDiaryEntryCmd(client *letterboxd.Client, req letterboxd.DiaryEntryReque
 	return func() tea.Msg {
 		err := client.SaveDiaryEntry(req)
 		return logResultMsg{err: err}
+	}
+}
+
+func setWatchlistCmd(client *letterboxd.Client, req letterboxd.WatchlistRequest, inWatchlist bool) tea.Cmd {
+	return func() tea.Msg {
+		err := client.SetWatchlist(req, inWatchlist)
+		return watchlistResultMsg{err: err, inWatchlist: inWatchlist}
 	}
 }
 

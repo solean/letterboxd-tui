@@ -3,6 +3,7 @@ package letterboxd
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,26 @@ func (c *Client) Film(filmURL, username string) (Film, error) {
 	film, err := parseFilm(doc, filmURL)
 	if err != nil {
 		return film, err
+	}
+	if film.Slug != "" {
+		if meta, err := c.filmJSON(film.Slug); err == nil {
+			if film.WatchlistID == "" && meta.LID != "" {
+				film.WatchlistID = meta.LID
+			}
+			if film.FilmID == "" && meta.ID != 0 {
+				film.FilmID = strconv.Itoa(meta.ID)
+			}
+			if film.ViewingUID == "" && meta.UID != "" {
+				film.ViewingUID = meta.UID
+			}
+			if film.URL == "" && meta.URL != "" {
+				film.URL = BaseURL + meta.URL
+			}
+			if meta.InWatchlist != nil {
+				film.InWatchlist = *meta.InWatchlist
+				film.WatchlistOK = true
+			}
+		}
 	}
 	if username != "" {
 		userURL := userFilmURL(username, filmURL)

@@ -45,6 +45,9 @@ type Film struct {
 	URL         string
 	Slug        string
 	FilmID      string
+	WatchlistID string
+	InWatchlist bool
+	WatchlistOK bool
 	ViewingUID  string
 	Cast        []string
 	UserRating  string

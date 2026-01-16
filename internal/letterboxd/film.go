@@ -73,7 +73,9 @@ func parseTopBilledCast(doc *goquery.Document, limit int) []string {
 
 func findFilmID(doc *goquery.Document) string {
 	if id := strings.TrimSpace(doc.Find("[data-film-id]").First().AttrOr("data-film-id", "")); id != "" {
-		return id
+		if isDigits(id) {
+			return id
+		}
 	}
 	var id string
 	doc.Find("script").EachWithBreak(func(_ int, s *goquery.Selection) bool {
@@ -101,6 +103,18 @@ func findFilmID(doc *goquery.Document) string {
 		return false
 	})
 	return strings.TrimSpace(id)
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseUserFilm(doc *goquery.Document) (string, string) {

@@ -56,6 +56,10 @@ func NormalizeFilmURL(url string) string {
 	return ""
 }
 
+func FilmSlug(url string) string {
+	return filmSlug(url)
+}
+
 func userFilmURL(username, filmURL string) string {
 	slug := filmSlug(filmURL)
 	if slug == "" || username == "" {

@@ -151,6 +151,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m = m.startLogModal()
 				return m, m.logSpinner.Tick
 			}
+		case "w":
+			if m.activeTab == tabFilm {
+				if m.watchlistPending {
+					return m, nil
+				}
+				if inWatchlist, ok := m.watchlistState(); ok && inWatchlist {
+					return m, nil
+				}
+				req, err := m.buildWatchlistRequest()
+				if err != nil {
+					m.watchlistStatus = "Error: " + err.Error()
+					return m, nil
+				}
+				m.watchlistPending = true
+				m.watchlistStatus = "Adding to watchlist..."
+				return m, setWatchlistCmd(m.client, req, true)
+			}
+		case "u":
+			if m.activeTab == tabFilm {
+				if m.watchlistPending {
+					return m, nil
+				}
+				inWatchlist, ok := m.watchlistState()
+				if !ok || !inWatchlist {
+					return m, nil
+				}
+				req, err := m.buildWatchlistRequest()
+				if err != nil {
+					m.watchlistStatus = "Error: " + err.Error()
+					return m, nil
+				}
+				m.watchlistPending = true
+				m.watchlistStatus = "Removing from watchlist..."
+				return m, setWatchlistCmd(m.client, req, false)
+			}
 		case "o":
 			if m.profileModal {
 				return m, openBrowserCmd(letterboxd.ProfileURL(m.modalUser))
@@ -185,6 +220,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case watchlistMsg:
 		m.watchlist = ev.items
 		m.watchErr = ev.err
+		m.watchlistLoaded = true
 		m.loading = false
 	case filmMsg:
 		m.film = ev.film
@@ -220,6 +256,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.err != nil {
 			m.profileErr = ev.err
 		}
+	case watchlistResultMsg:
+		m.watchlistPending = false
+		if ev.err != nil {
+			m.watchlistStatus = "Error: " + ev.err.Error()
+			return m, nil
+		}
+		m.film.InWatchlist = ev.inWatchlist
+		m.film.WatchlistOK = true
+		if ev.inWatchlist {
+			m.watchlistStatus = "Added to watchlist."
+		} else {
+			m.watchlistStatus = "Removed from watchlist."
+		}
+		m.refreshModalViewport()
+		m.loading = true
+		return m, tea.Batch(
+			fetchFilmCmd(m.client, m.film.URL, m.username),
+			fetchWatchlistCmd(m.client, m.username),
+		)
 	}
 	return m, nil
 }
