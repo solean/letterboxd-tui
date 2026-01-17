@@ -10,6 +10,8 @@ import (
 	"letterboxd-tui/internal/letterboxd"
 )
 
+var execCommand = exec.Command
+
 type diaryMsg struct {
 	items []letterboxd.DiaryEntry
 	err   error
@@ -175,11 +177,11 @@ func openBrowserCmd(url string) tea.Cmd {
 		var cmd *exec.Cmd
 		switch runtime.GOOS {
 		case "darwin":
-			cmd = exec.Command("open", url)
+			cmd = execCommand("open", url)
 		case "windows":
-			cmd = exec.Command("cmd", "/c", "start", url)
+			cmd = execCommand("cmd", "/c", "start", url)
 		default:
-			cmd = exec.Command("xdg-open", url)
+			cmd = execCommand("xdg-open", url)
 		}
 		if err := cmd.Start(); err != nil {
 			return openMsg{err: err}
