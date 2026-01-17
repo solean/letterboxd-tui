@@ -284,6 +284,11 @@ func (m Model) openSelectedFilm() Model {
 		return m
 	}
 	m.film = letterboxd.Film{URL: filmURL}
+	m.filmErr = nil
+	m.popReviews = nil
+	m.friendReviews = nil
+	m.popReviewsErr = nil
+	m.friendReviewsErr = nil
 	m.watchlistPending = false
 	m.watchlistStatus = ""
 	m.filmReturn = m.activeTab
@@ -291,6 +296,7 @@ func (m Model) openSelectedFilm() Model {
 	m.loading = true
 	m.viewport.YOffset = 0
 	m.modalVP.YOffset = 0
+	m.modalVP.SetContent("")
 	m.refreshModalViewport()
 	return m
 }
