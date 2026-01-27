@@ -32,27 +32,34 @@ func TestRenderTabs(t *testing.T) {
 	}
 }
 
-func TestRenderLegendVariants(t *testing.T) {
-	m := Model{activeTab: tabSearch, searchFocusInput: true}
-	if out := renderLegend(m); !strings.Contains(out, "type query") {
-		t.Fatalf("unexpected search legend: %q", out)
+func TestRenderHelpVariants(t *testing.T) {
+	theme := newTheme()
+	m := NewModel("jane", nil)
+	m.activeTab = tabSearch
+	m.searchFocusInput = true
+	if out := renderHelp(m, theme, 120); !strings.Contains(out, "search") {
+		t.Fatalf("unexpected search help: %q", out)
 	}
 	m.searchFocusInput = false
-	if out := renderLegend(m); !strings.Contains(out, "ctrl+f") {
-		t.Fatalf("unexpected search legend: %q", out)
+	if out := renderHelp(m, theme, 120); !strings.Contains(out, "/") {
+		t.Fatalf("unexpected search help: %q", out)
 	}
-	m = Model{activeTab: tabFilm, film: letterboxd.Film{URL: letterboxd.BaseURL + "/film/inception/"}, watchlistLoaded: true}
-	if out := renderLegend(m); !strings.Contains(out, "add to watchlist") {
-		t.Fatalf("unexpected film legend: %q", out)
+	m = NewModel("jane", nil)
+	m.activeTab = tabFilm
+	m.film = letterboxd.Film{URL: letterboxd.BaseURL + "/film/inception/"}
+	m.watchlistLoaded = true
+	if out := renderHelp(m, theme, 120); !strings.Contains(out, "add to watchlist") {
+		t.Fatalf("unexpected film help: %q", out)
 	}
 	m.film.WatchlistOK = true
 	m.film.InWatchlist = true
-	if out := renderLegend(m); !strings.Contains(out, "remove from watchlist") {
-		t.Fatalf("unexpected film legend: %q", out)
+	if out := renderHelp(m, theme, 120); !strings.Contains(out, "remove from watchlist") {
+		t.Fatalf("unexpected film help: %q", out)
 	}
-	m = Model{profileModal: true}
-	if out := renderLegend(m); !strings.Contains(out, "close profile") {
-		t.Fatalf("unexpected profile legend: %q", out)
+	m = NewModel("jane", nil)
+	m.profileModal = true
+	if out := renderHelp(m, theme, 120); !strings.Contains(out, "back") {
+		t.Fatalf("unexpected profile help: %q", out)
 	}
 }
 
