@@ -15,11 +15,13 @@ var execCommand = exec.Command
 type diaryMsg struct {
 	items []letterboxd.DiaryEntry
 	err   error
+	page  int
 }
 
 type watchlistMsg struct {
 	items []letterboxd.WatchlistItem
 	err   error
+	page  int
 }
 
 type filmMsg struct {
@@ -36,6 +38,7 @@ type reviewsMsg struct {
 	reviews []letterboxd.Review
 	err     error
 	kind    string
+	page    int
 }
 
 type profileMsg struct {
@@ -48,6 +51,7 @@ type activityMsg struct {
 	items []letterboxd.ActivityItem
 	err   error
 	tab   tab
+	after string
 }
 
 type errMsg struct {
@@ -70,10 +74,10 @@ type watchlistResultMsg struct {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		fetchProfileCmd(m.client, m.profileUser),
-		fetchDiaryCmd(m.client, m.username),
-		fetchWatchlistCmd(m.client, m.username),
-		fetchActivityCmd(m.client, m.username, tabActivity),
-		fetchActivityCmd(m.client, m.username, tabFollowing),
+		fetchDiaryCmd(m.client, m.username, 1),
+		fetchWatchlistCmd(m.client, m.username, 1),
+		fetchActivityCmd(m.client, m.username, tabActivity, ""),
+		fetchActivityCmd(m.client, m.username, tabFollowing, ""),
 	)
 }
 
@@ -91,17 +95,17 @@ func fetchProfileModalCmd(client *letterboxd.Client, username string) tea.Cmd {
 	}
 }
 
-func fetchDiaryCmd(client *letterboxd.Client, username string) tea.Cmd {
+func fetchDiaryCmd(client *letterboxd.Client, username string, page int) tea.Cmd {
 	return func() tea.Msg {
-		items, err := client.Diary(username)
-		return diaryMsg{items: items, err: err}
+		items, err := client.Diary(username, page)
+		return diaryMsg{items: items, err: err, page: page}
 	}
 }
 
-func fetchWatchlistCmd(client *letterboxd.Client, username string) tea.Cmd {
+func fetchWatchlistCmd(client *letterboxd.Client, username string, page int) tea.Cmd {
 	return func() tea.Msg {
-		items, err := client.Watchlist(username)
-		return watchlistMsg{items: items, err: err}
+		items, err := client.Watchlist(username, page)
+		return watchlistMsg{items: items, err: err, page: page}
 	}
 }
 
@@ -119,7 +123,7 @@ func fetchSearchCmd(client *letterboxd.Client, query string) tea.Cmd {
 	}
 }
 
-func fetchReviewsCmd(client *letterboxd.Client, slug string, which string) tea.Cmd {
+func fetchReviewsCmd(client *letterboxd.Client, slug string, which string, page int) tea.Cmd {
 	return func() tea.Msg {
 		var (
 			revs []letterboxd.Review
@@ -127,17 +131,17 @@ func fetchReviewsCmd(client *letterboxd.Client, slug string, which string) tea.C
 		)
 		switch which {
 		case "popular":
-			revs, err = client.PopularReviews(slug)
+			revs, err = client.PopularReviews(slug, page)
 		case "friends":
-			revs, err = client.FriendReviews(slug)
+			revs, err = client.FriendReviews(slug, page)
 		default:
 			err = fmt.Errorf("unknown reviews kind")
 		}
-		return reviewsMsg{reviews: revs, err: err, kind: which}
+		return reviewsMsg{reviews: revs, err: err, kind: which, page: page}
 	}
 }
 
-func fetchActivityCmd(client *letterboxd.Client, username string, which tab) tea.Cmd {
+func fetchActivityCmd(client *letterboxd.Client, username string, which tab, after string) tea.Cmd {
 	return func() tea.Msg {
 		var (
 			items []letterboxd.ActivityItem
@@ -145,13 +149,13 @@ func fetchActivityCmd(client *letterboxd.Client, username string, which tab) tea
 		)
 		switch which {
 		case tabActivity:
-			items, err = client.Activity(username)
+			items, err = client.Activity(username, after)
 		case tabFollowing:
-			items, err = client.FollowingActivity(username)
+			items, err = client.FollowingActivity(username, after)
 		default:
 			return errMsg{err: fmt.Errorf("unknown activity tab")}
 		}
-		return activityMsg{tab: which, items: items, err: err}
+		return activityMsg{tab: which, items: items, err: err, after: after}
 	}
 }
 

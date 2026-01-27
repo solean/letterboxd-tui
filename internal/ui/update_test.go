@@ -79,7 +79,7 @@ func TestUpdateSearchMsg(t *testing.T) {
 func TestUpdateActivityMsg(t *testing.T) {
 	m := NewModel("jane", nil)
 	items := []letterboxd.ActivityItem{{Title: "A"}}
-	model, _ := m.Update(activityMsg{tab: tabActivity, items: items})
+	model, _ := m.Update(activityMsg{tab: tabActivity, items: items, after: ""})
 	out := model.(Model)
 	if len(out.activity) != 1 {
 		t.Fatalf("unexpected activity state")

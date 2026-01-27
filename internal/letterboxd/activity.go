@@ -10,6 +10,7 @@ import (
 func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 	var items []ActivityItem
 	doc.Find("section.activity-row").Each(func(_ int, row *goquery.Selection) {
+		id := strings.TrimSpace(row.AttrOr("data-activity-id", ""))
 		kind := strings.TrimSpace(row.AttrOr("class", ""))
 		summarySel := row.Find(".activity-summary").First()
 		summary := strings.TrimSpace(summarySel.Text())
@@ -37,6 +38,7 @@ func parseActivity(doc *goquery.Document) ([]ActivityItem, error) {
 		rating := strings.TrimSpace(row.Find(".rating").First().Text())
 		parts := parseSummaryParts(summarySel)
 		items = append(items, ActivityItem{
+			ID:       id,
 			Summary:  summary,
 			When:     when,
 			Title:    title,

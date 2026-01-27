@@ -56,7 +56,7 @@ func TestFetchCommands(t *testing.T) {
 			return newHTTPResponse(http.StatusOK, filmHTML), nil
 		case "/film/inception/json":
 			return newHTTPResponse(http.StatusOK, `{"lid":"lid123","id":123}`), nil
-		case "/ajax/film/inception/popular-reviews/":
+		case "/film/inception/reviews/by/activity/page/1/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
 		case "/csi/film/inception/friend-reviews/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
@@ -68,16 +68,16 @@ func TestFetchCommands(t *testing.T) {
 	if msg := fetchProfileCmd(client, "jane")(); msg.(profileMsg).err != nil {
 		t.Fatalf("unexpected profile error")
 	}
-	if msg := fetchDiaryCmd(client, "jane")(); msg.(diaryMsg).err != nil {
+	if msg := fetchDiaryCmd(client, "jane", 1)(); msg.(diaryMsg).err != nil {
 		t.Fatalf("unexpected diary error")
 	}
-	if msg := fetchWatchlistCmd(client, "jane")(); msg.(watchlistMsg).err != nil {
+	if msg := fetchWatchlistCmd(client, "jane", 1)(); msg.(watchlistMsg).err != nil {
 		t.Fatalf("unexpected watchlist error")
 	}
-	if msg := fetchActivityCmd(client, "jane", tabActivity)(); msg.(activityMsg).err != nil {
+	if msg := fetchActivityCmd(client, "jane", tabActivity, "")(); msg.(activityMsg).err != nil {
 		t.Fatalf("unexpected activity error")
 	}
-	if msg := fetchActivityCmd(client, "jane", tabFollowing)(); msg.(activityMsg).err != nil {
+	if msg := fetchActivityCmd(client, "jane", tabFollowing, "")(); msg.(activityMsg).err != nil {
 		t.Fatalf("unexpected following error")
 	}
 	if msg := fetchSearchCmd(client, "inception")(); msg.(searchMsg).err != nil {
@@ -86,7 +86,7 @@ func TestFetchCommands(t *testing.T) {
 	if msg := fetchFilmCmd(client, letterboxd.BaseURL+"/film/inception/", "")(); msg.(filmMsg).err != nil {
 		t.Fatalf("unexpected film error")
 	}
-	if msg := fetchReviewsCmd(client, "inception", "popular")(); msg.(reviewsMsg).err != nil {
+	if msg := fetchReviewsCmd(client, "inception", "popular", 1)(); msg.(reviewsMsg).err != nil {
 		t.Fatalf("unexpected reviews error")
 	}
 }
@@ -95,7 +95,7 @@ func TestFetchReviewsUnknownKind(t *testing.T) {
 	client := newStubClient(func(req *http.Request) (*http.Response, error) {
 		return newHTTPResponse(http.StatusOK, ""), nil
 	})
-	msg := fetchReviewsCmd(client, "slug", "nope")().(reviewsMsg)
+	msg := fetchReviewsCmd(client, "slug", "nope", 1)().(reviewsMsg)
 	if msg.err == nil {
 		t.Fatalf("expected error for unknown kind")
 	}
@@ -105,7 +105,7 @@ func TestFetchActivityUnknownTab(t *testing.T) {
 	client := newStubClient(func(req *http.Request) (*http.Response, error) {
 		return newHTTPResponse(http.StatusOK, ""), nil
 	})
-	if msg := fetchActivityCmd(client, "jane", tabFilm)(); msg.(errMsg).err == nil {
+	if msg := fetchActivityCmd(client, "jane", tabFilm, "")(); msg.(errMsg).err == nil {
 		t.Fatalf("expected error for unknown tab")
 	}
 }
