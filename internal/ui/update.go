@@ -2,7 +2,9 @@ package ui
 
 import (
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,6 +19,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		bodyHeight := max(1, m.height-3)
 		m.viewport.Width = m.width
 		m.viewport.Height = bodyHeight
+		m.help.Width = m.width
 		if m.logModal {
 			m.logForm.setSize(m.width)
 		}
@@ -105,19 +108,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd, handled := m.handleSearchKey(ev); handled {
 			return m, cmd
 		}
-		switch ev.String() {
-		case "ctrl+c", "q":
-			if m.modalOpen() {
-				if m.activeTab == tabFilm {
-					m.activeTab = m.filmReturn
-					m.resetTabPosition()
-				} else if m.profileModal {
-					m.profileModal = false
-				}
+		switch {
+		case key.Matches(ev, m.keys.QuitAll):
+			return m, tea.Quit
+		case key.Matches(ev, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
+		case m.handleJumpKeys(ev):
+			return m, nil
+		case m.modalOpen() && key.Matches(ev, m.keys.ModalBack):
+			if m.activeTab == tabFilm {
+				m.activeTab = m.filmReturn
+				m.resetTabPosition()
+			} else if m.profileModal {
+				m.profileModal = false
+			}
+			return m, nil
+		case key.Matches(ev, m.keys.SearchTab):
+			if m.profileModal {
+				m.profileModal = false
+			}
+			if m.activeTab != tabSearch {
+				m.activeTab = tabSearch
+				m.resetTabPosition()
 				return m, nil
 			}
+			m.searchFocusInput = true
+			m.searchInput.Focus()
+			return m, nil
+		case key.Matches(ev, m.keys.Quit):
 			return m, tea.Quit
-		case "tab", "right":
+		case key.Matches(ev, m.keys.NextTab):
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 			} else {
@@ -125,7 +146,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.resetTabPosition()
 			return m, m.maybeFillCmd()
-		case "left", "shift+tab":
+		case key.Matches(ev, m.keys.PrevTab):
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 			} else {
@@ -133,7 +154,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.resetTabPosition()
 			return m, m.maybeFillCmd()
-		case "j", "down":
+		case key.Matches(ev, m.keys.Down):
 			if m.modalOpen() {
 				m.modalVP.LineDown(1)
 				if m.activeTab == tabFilm {
@@ -146,7 +167,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncViewportToSelection()
 				return m, m.maybeLoadMoreCmd()
 			}
-		case "k", "up":
+		case key.Matches(ev, m.keys.Up):
 			if m.modalOpen() {
 				m.modalVP.LineUp(1)
 			} else if m.activeTab == tabProfile {
@@ -156,7 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncViewportToSelection()
 				return m, m.maybeLoadMoreCmd()
 			}
-		case "pgdown":
+		case key.Matches(ev, m.keys.PageDown):
 			if m.modalOpen() {
 				m.modalVP.ViewDown()
 				if m.activeTab == tabFilm {
@@ -169,7 +190,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncViewportToSelection()
 				return m, m.maybeLoadMoreCmd()
 			}
-		case "pgup":
+		case key.Matches(ev, m.keys.PageUp):
 			if m.modalOpen() {
 				m.modalVP.ViewUp()
 			} else if m.activeTab == tabProfile {
@@ -179,7 +200,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncViewportToSelection()
 				return m, m.maybeLoadMoreCmd()
 			}
-		case "r":
+		case key.Matches(ev, m.keys.Refresh):
 			m.loading = true
 			m.resetPagination()
 			cmds := []tea.Cmd{
@@ -192,7 +213,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, fetchActivityCmd(m.client, m.username, tabFollowing, ""))
 			}
 			return m, tea.Batch(cmds...)
-		case "enter":
+		case key.Matches(ev, m.keys.Select):
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
 				return m, fetchProfileModalCmd(m.client, m.modalUser)
@@ -202,7 +223,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, fetchFilmCmd(m.client, m.film.URL, m.username)
 				}
 			}
-		case "b":
+		case key.Matches(ev, m.keys.Back):
 			if m.profileModal {
 				m.profileModal = false
 			} else if m.activeTab == tabProfile {
@@ -211,12 +232,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, fetchProfileCmd(m.client, m.profileUser)
 				}
 			}
-		case "l":
+		case key.Matches(ev, m.keys.Log):
 			if m.activeTab == tabFilm && m.hasCookie() {
 				m = m.startLogModal()
 				return m, m.logSpinner.Tick
 			}
-		case "w":
+		case key.Matches(ev, m.keys.WatchlistAdd):
 			if m.activeTab == tabFilm && m.hasCookie() {
 				if m.watchlistPending {
 					return m, nil
@@ -233,7 +254,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.watchlistStatus = "Adding to watchlist..."
 				return m, setWatchlistCmd(m.client, req, true)
 			}
-		case "u":
+		case key.Matches(ev, m.keys.WatchlistRemove):
 			if m.activeTab == tabFilm && m.hasCookie() {
 				if m.watchlistPending {
 					return m, nil
@@ -251,7 +272,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.watchlistStatus = "Removing from watchlist..."
 				return m, setWatchlistCmd(m.client, req, false)
 			}
-		case "o":
+		case key.Matches(ev, m.keys.Open):
 			if m.profileModal {
 				return m, openBrowserCmd(letterboxd.ProfileURL(m.modalUser))
 			} else if m.activeTab == tabProfile {
@@ -259,7 +280,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == tabFilm {
 				return m, openBrowserCmd(m.film.URL)
 			}
-		case "esc":
+		case key.Matches(ev, m.keys.Cancel):
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 				m.resetTabPosition()
@@ -430,10 +451,10 @@ func (m *Model) refreshModalViewport() {
 		return
 	}
 	theme := newTheme()
-	legend := theme.subtle.Render(renderLegend(*m))
 	width, height := modalDimensions(m.width, m.height)
 	innerWidth := width - 4
 	innerHeight := height - 2
+	legend := renderHelp(*m, theme, innerWidth)
 	bodyHeight := max(1, innerHeight-lipgloss.Height(legend)-1)
 
 	m.modalVP.Width = innerWidth
@@ -452,10 +473,10 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if m.activeTab != tabSearch {
 		return nil, false
 	}
-	switch msg.String() {
-	case "ctrl+c", "q", "tab", "shift+tab", "left", "right":
+	switch {
+	case key.Matches(msg, m.keys.QuitAll, m.keys.Quit, m.keys.Help, m.keys.NextTab, m.keys.PrevTab):
 		return nil, false
-	case "enter":
+	case key.Matches(msg, m.keys.Select):
 		if m.searchFocusInput {
 			query := strings.TrimSpace(m.searchInput.Value())
 			if query == "" {
@@ -474,36 +495,36 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return fetchFilmCmd(m.client, m.film.URL, m.username), true
 		}
 		return nil, true
-	case "ctrl+f":
+	case key.Matches(msg, m.keys.SearchTab):
 		m.searchFocusInput = true
 		m.searchInput.Focus()
 		return nil, true
-	case "esc":
+	case key.Matches(msg, m.keys.Cancel):
 		m.searchFocusInput = false
 		m.searchInput.Blur()
 		return nil, true
-	case "j", "down":
+	case key.Matches(msg, m.keys.Down):
 		if m.searchFocusInput {
 			break
 		}
 		m.moveSelection(1)
 		m.syncViewportToSelection()
 		return nil, true
-	case "k", "up":
+	case key.Matches(msg, m.keys.Up):
 		if m.searchFocusInput {
 			break
 		}
 		m.moveSelection(-1)
 		m.syncViewportToSelection()
 		return nil, true
-	case "pgdown":
+	case key.Matches(msg, m.keys.PageDown):
 		if m.searchFocusInput {
 			break
 		}
 		m.pageSelection(1)
 		m.syncViewportToSelection()
 		return nil, true
-	case "pgup":
+	case key.Matches(msg, m.keys.PageUp):
 		if m.searchFocusInput {
 			break
 		}
@@ -520,21 +541,48 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+func (m *Model) handleJumpKeys(msg tea.KeyMsg) bool {
+	if key.Matches(msg, m.keys.JumpBottom) {
+		m.pendingG = false
+		m.jumpToBottom()
+		return true
+	}
+
+	if msg.String() != "g" {
+		m.pendingG = false
+		return false
+	}
+
+	now := time.Now()
+	if m.pendingG && now.Sub(m.pendingGAt) <= 600*time.Millisecond {
+		m.pendingG = false
+		m.jumpToTop()
+		return true
+	}
+
+	m.pendingG = true
+	m.pendingGAt = now
+	return true
+}
+
 func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
 	case tea.KeyMsg:
-		switch typed.String() {
-		case "esc", "q":
+		switch {
+		case key.Matches(typed, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
+		case key.Matches(typed, m.keys.Cancel, m.keys.ModalBack):
 			m.logModal = false
 			m.logForm.submitting = false
 			return m, nil
-		case "tab", "right":
+		case key.Matches(typed, m.keys.NextTab):
 			m.logForm.focusField(m.logForm.focus + 1)
 			return m, nil
-		case "shift+tab", "left":
+		case key.Matches(typed, m.keys.PrevTab):
 			m.logForm.focusField(m.logForm.focus - 1)
 			return m, nil
-		case "enter", "ctrl+s":
+		case key.Matches(typed, m.keys.Select, m.keys.Submit):
 			if m.logForm.focus == logFieldSubmit {
 				if m.film.ViewingUID == "" {
 					m.logForm.status = "Missing film id; cannot log."
@@ -561,7 +609,7 @@ func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logForm.draft = !m.logForm.draft
 				return m, nil
 			}
-		case " ":
+		case key.Matches(typed, m.keys.Toggle):
 			switch m.logForm.focus {
 			case logFieldRewatch:
 				m.logForm.rewatch = !m.logForm.rewatch

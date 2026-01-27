@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -103,6 +104,10 @@ type Model struct {
 	watchlistPending         bool
 	searchInput              textinput.Model
 	searchFocusInput         bool
+	keys                     keyMap
+	help                     help.Model
+	pendingG                 bool
+	pendingGAt               time.Time
 }
 
 func NewModel(username string, client *letterboxd.Client) Model {
@@ -121,6 +126,8 @@ func NewModel(username string, client *letterboxd.Client) Model {
 		logSpinner:       spinner.New(spinner.WithSpinner(spinner.Dot)),
 		searchInput:      searchInput,
 		searchFocusInput: true,
+		keys:             newKeyMap(),
+		help:             help.New(),
 	}
 }
 
@@ -255,6 +262,92 @@ func (m *Model) syncViewportToSelection() {
 	maxOffset := max(0, total-m.viewport.Height)
 	if m.viewport.YOffset > maxOffset {
 		m.viewport.YOffset = maxOffset
+	}
+}
+
+func (m *Model) jumpToTop() {
+	if m.profileModal || m.activeTab == tabFilm {
+		m.modalVP.GotoTop()
+		return
+	}
+	switch m.activeTab {
+	case tabProfile:
+		m.viewport.GotoTop()
+	case tabDiary:
+		if len(m.diary) == 0 {
+			return
+		}
+		m.diaryList.selected = 0
+		m.syncViewportToSelection()
+	case tabWatchlist:
+		if len(m.watchlist) == 0 {
+			return
+		}
+		m.watchList.selected = 0
+		m.syncViewportToSelection()
+	case tabActivity:
+		if len(m.activity) == 0 {
+			return
+		}
+		m.actList.selected = 0
+		m.syncViewportToSelection()
+	case tabFollowing:
+		if len(m.following) == 0 {
+			return
+		}
+		m.followList.selected = 0
+		m.syncViewportToSelection()
+	case tabSearch:
+		if len(m.searchResults) == 0 {
+			return
+		}
+		m.searchList.selected = 0
+		m.syncViewportToSelection()
+	default:
+		m.viewport.GotoTop()
+	}
+}
+
+func (m *Model) jumpToBottom() {
+	if m.profileModal || m.activeTab == tabFilm {
+		m.modalVP.GotoBottom()
+		return
+	}
+	switch m.activeTab {
+	case tabProfile:
+		m.viewport.GotoBottom()
+	case tabDiary:
+		if len(m.diary) == 0 {
+			return
+		}
+		m.diaryList.selected = len(m.diary) - 1
+		m.syncViewportToSelection()
+	case tabWatchlist:
+		if len(m.watchlist) == 0 {
+			return
+		}
+		m.watchList.selected = len(m.watchlist) - 1
+		m.syncViewportToSelection()
+	case tabActivity:
+		if len(m.activity) == 0 {
+			return
+		}
+		m.actList.selected = len(m.activity) - 1
+		m.syncViewportToSelection()
+	case tabFollowing:
+		if len(m.following) == 0 {
+			return
+		}
+		m.followList.selected = len(m.following) - 1
+		m.syncViewportToSelection()
+	case tabSearch:
+		if len(m.searchResults) == 0 {
+			return
+		}
+		m.searchList.selected = len(m.searchResults) - 1
+		m.syncViewportToSelection()
+	default:
+		m.viewport.GotoBottom()
 	}
 }
 

@@ -32,7 +32,7 @@ func (m Model) View() string {
 		body = renderSearch(m, theme)
 	}
 
-	footer := theme.subtle.Render(renderLegend(m))
+	footer := renderHelp(m, theme, m.width)
 	vp := m.viewport
 	vp.SetContent(body)
 	base := lipgloss.JoinVertical(lipgloss.Left, header, tabLine, vp.View(), footer)
@@ -133,55 +133,6 @@ func prevTab(m Model, current tab) tab {
 	}
 	return tabProfile
 }
-
-func renderLegend(m Model) string {
-	if m.logModal {
-		return "tab/shift+tab move • enter toggle/submit • ctrl+s submit • esc/q cancel"
-	}
-	if m.activeTab == tabSearch {
-		if m.searchFocusInput {
-			return "type query • enter search • esc results • tab/shift+tab switch • q quit"
-		}
-		return "j/k move • pgup/pgdn page • enter view • ctrl+f edit query • tab/shift+tab switch • q quit"
-	}
-	if m.activeTab == tabFilm {
-		parts := []string{"j/k scroll", "pgup/pgdn page"}
-		if m.hasCookie() {
-			parts = append(parts, "l log entry")
-			watchlistHint := "w add to watchlist"
-			if inWatchlist, ok := m.watchlistState(); ok && inWatchlist {
-				watchlistHint = "u remove from watchlist"
-			}
-			parts = append(parts, watchlistHint)
-		}
-		parts = append(parts, "o open film in browser", "tab/shift+tab back", "esc/q close film")
-		return strings.Join(parts, " • ")
-	}
-	if m.profileModal {
-		return "j/k scroll • pgup/pgdn page • o open in browser • b/q/esc close profile"
-	}
-
-	var parts []string
-	parts = append(parts, "tab/shift+tab switch")
-	if m.activeTab == tabProfile {
-		parts = append(parts, "j/k scroll", "pgup/pgdn scroll")
-		if len(m.profileStack) > 0 {
-			parts = append(parts, "b back")
-		}
-		parts = append(parts, "o open profile in browser")
-	} else {
-		parts = append(parts, "j/k move", "pgup/pgdn page")
-		switch m.activeTab {
-		case tabDiary, tabWatchlist, tabActivity:
-			parts = append(parts, "enter view film")
-		case tabFollowing:
-			parts = append(parts, "enter view profile")
-		}
-	}
-	parts = append(parts, "r refresh", "q quit")
-	return strings.Join(parts, " • ")
-}
-
 func renderProfile(m Model, theme themeStyles) string {
 	return renderProfileContent(m.profile, m.profileErr, m.loading, m.profileUser, m.profileStack, theme)
 }
@@ -401,7 +352,7 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 	width, height := modalDimensions(m.width, m.height)
 	innerWidth := width - 4
 	innerHeight := height - 2
-	legend := theme.subtle.Render(renderLegend(m))
+	legend := renderHelp(m, theme, innerWidth)
 	legendHeight := lipgloss.Height(legend)
 	bodyHeight := max(1, innerHeight-legendHeight-1)
 
@@ -439,7 +390,7 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 	width, height := modalDimensions(m.width, m.height)
 	innerWidth := width - 4
 	innerHeight := height - 2
-	legend := theme.subtle.Render(renderLegend(m))
+	legend := renderHelp(m, theme, innerWidth)
 	legendHeight := lipgloss.Height(legend)
 	bodyHeight := max(1, innerHeight-legendHeight-1)
 
@@ -472,10 +423,10 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 
 func renderLogModal(base string, m Model, theme themeStyles) string {
 	form := renderLogForm(m, theme)
-	legend := theme.subtle.Render(renderLegend(m))
 	width, height := modalDimensions(m.width, m.height)
 	innerWidth := width - 4
 	innerHeight := height - 2
+	legend := renderHelp(m, theme, innerWidth)
 	bodyHeight := max(0, innerHeight-lipgloss.Height(legend)-1)
 	bodyHeight = max(1, bodyHeight)
 	body := lipgloss.Place(innerWidth, bodyHeight, lipgloss.Left, lipgloss.Top, form)
