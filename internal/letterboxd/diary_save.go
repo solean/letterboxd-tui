@@ -73,7 +73,7 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	applyDefaultHeaders(httpReq)
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("Origin", BaseURL)
 	httpReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
