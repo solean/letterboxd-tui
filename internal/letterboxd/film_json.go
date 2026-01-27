@@ -26,7 +26,7 @@ func (c *Client) filmJSON(slug string) (filmJSONResponse, error) {
 	if err != nil {
 		return filmJSONResponse{}, err
 	}
-	req.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	applyDefaultHeaders(req)
 	if c.Cookie != "" {
 		req.Header.Set("Cookie", c.Cookie)
 	}
