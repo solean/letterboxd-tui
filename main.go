@@ -17,8 +17,10 @@ import (
 func main() {
 	var userFlag string
 	var setupFlag bool
+	var noCookieFlag bool
 	flag.StringVar(&userFlag, "user", "", "Letterboxd username")
 	flag.BoolVar(&setupFlag, "setup", false, "Run first-time setup")
+	flag.BoolVar(&noCookieFlag, "no-cookie", false, "Run without a stored cookie")
 	flag.Parse()
 
 	state, err := resolveStartup(strings.TrimSpace(userFlag))
@@ -29,6 +31,10 @@ func main() {
 	if setupFlag {
 		state.needUsername = true
 		state.needCookie = true
+	}
+	if noCookieFlag {
+		state.cookie = ""
+		state.needCookie = false
 	}
 	if state.needUsername || state.needCookie {
 		result, err := ui.RunOnboarding(ui.OnboardingOptions{

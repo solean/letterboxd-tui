@@ -49,35 +49,67 @@ func (m Model) View() string {
 }
 
 func renderTabs(m Model, theme themeStyles) string {
-	tabs := []string{"Profile", "Diary", "Friends", "My Activity", "Watchlist", "Search"}
 	var out []string
-	for i, label := range tabs {
-		if visibleTabByIndex(i) == m.activeTab {
-			out = append(out, theme.tabActive.Render(label))
+	for _, item := range visibleTabItems(m) {
+		if item.id == m.activeTab {
+			out = append(out, theme.tabActive.Render(item.label))
 		} else {
-			out = append(out, theme.tab.Render(label))
+			out = append(out, theme.tab.Render(item.label))
 		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, out...)
 }
 
-func visibleTabs() []tab {
-	return []tab{tabProfile, tabDiary, tabFollowing, tabActivity, tabWatchlist, tabSearch}
+type tabItem struct {
+	id          tab
+	label       string
+	needsCookie bool
 }
 
-func visibleTabByIndex(i int) tab {
-	tabs := visibleTabs()
+func visibleTabItems(m Model) []tabItem {
+	tabs := []tabItem{
+		{id: tabProfile, label: "Profile"},
+		{id: tabDiary, label: "Diary"},
+		{id: tabFollowing, label: "Friends", needsCookie: true},
+		{id: tabActivity, label: "My Activity"},
+		{id: tabWatchlist, label: "Watchlist"},
+		{id: tabSearch, label: "Search"},
+	}
+	if m.hasCookie() {
+		return tabs
+	}
+	visible := make([]tabItem, 0, len(tabs)-1)
+	for _, item := range tabs {
+		if item.needsCookie {
+			continue
+		}
+		visible = append(visible, item)
+	}
+	return visible
+}
+
+func visibleTabs(m Model) []tab {
+	items := visibleTabItems(m)
+	tabs := make([]tab, 0, len(items))
+	for _, item := range items {
+		tabs = append(tabs, item.id)
+	}
+	return tabs
+}
+
+func visibleTabByIndex(m Model, i int) tab {
+	tabs := visibleTabs(m)
 	if i < 0 || i >= len(tabs) {
 		return tabProfile
 	}
 	return tabs[i]
 }
 
-func nextTab(current tab) tab {
+func nextTab(m Model, current tab) tab {
 	if current == tabFilm {
 		return tabProfile
 	}
-	tabs := visibleTabs()
+	tabs := visibleTabs(m)
 	for i, t := range tabs {
 		if t == current {
 			return tabs[(i+1)%len(tabs)]
@@ -86,11 +118,11 @@ func nextTab(current tab) tab {
 	return tabProfile
 }
 
-func prevTab(current tab) tab {
+func prevTab(m Model, current tab) tab {
 	if current == tabFilm {
 		return tabProfile
 	}
-	tabs := visibleTabs()
+	tabs := visibleTabs(m)
 	for i, t := range tabs {
 		if t == current {
 			if i == 0 {
@@ -113,11 +145,17 @@ func renderLegend(m Model) string {
 		return "j/k move • pgup/pgdn page • enter view • ctrl+f edit query • tab/shift+tab switch • q quit"
 	}
 	if m.activeTab == tabFilm {
-		watchlistHint := "w add to watchlist"
-		if inWatchlist, ok := m.watchlistState(); ok && inWatchlist {
-			watchlistHint = "u remove from watchlist"
+		parts := []string{"j/k scroll", "pgup/pgdn page"}
+		if m.hasCookie() {
+			parts = append(parts, "l log entry")
+			watchlistHint := "w add to watchlist"
+			if inWatchlist, ok := m.watchlistState(); ok && inWatchlist {
+				watchlistHint = "u remove from watchlist"
+			}
+			parts = append(parts, watchlistHint)
 		}
-		return "j/k scroll • pgup/pgdn page • l log entry • " + watchlistHint + " • o open film in browser • tab/shift+tab back • esc/q close film"
+		parts = append(parts, "o open film in browser", "tab/shift+tab back", "esc/q close film")
+		return strings.Join(parts, " • ")
 	}
 	if m.profileModal {
 		return "j/k scroll • pgup/pgdn page • o open in browser • b/q/esc close profile"
@@ -347,7 +385,7 @@ func renderFilm(m Model, theme themeStyles) string {
 	if m.film.URL != "" {
 		rows = append(rows, "", theme.dim.Render(truncate(m.film.URL, wrapWidth)))
 	}
-	if len(m.friendReviews) > 0 || m.friendReviewsErr != nil {
+	if m.hasFriendReviewsSection() {
 		rows = append(rows, "", renderReviewsWithStatus("Friends' reviews", m.friendReviews, m.friendReviewsErr, wrapWidth, m.friendReviewsLoadingMore, m.friendReviewsMoreErr, m.friendReviewsDone, theme))
 	}
 	if len(m.popReviews) > 0 || m.popReviewsErr != nil {

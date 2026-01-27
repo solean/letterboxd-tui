@@ -10,17 +10,23 @@ import (
 )
 
 func TestTabNavigation(t *testing.T) {
-	if len(visibleTabs()) == 0 {
+	withCookie := Model{client: &letterboxd.Client{Cookie: "foo=bar"}}
+	if len(visibleTabs(withCookie)) == 0 {
 		t.Fatalf("expected visible tabs")
 	}
-	if visibleTabByIndex(-1) != tabProfile {
+	if visibleTabByIndex(withCookie, -1) != tabProfile {
 		t.Fatalf("expected profile for invalid index")
 	}
-	if nextTab(tabSearch) != tabProfile {
+	if nextTab(withCookie, tabSearch) != tabProfile {
 		t.Fatalf("expected wrap to profile")
 	}
-	if prevTab(tabProfile) != tabSearch {
+	if prevTab(withCookie, tabProfile) != tabSearch {
 		t.Fatalf("expected wrap to search")
+	}
+	for _, tab := range visibleTabs(Model{}) {
+		if tab == tabFollowing {
+			t.Fatalf("expected friends tab hidden without cookie")
+		}
 	}
 }
 
@@ -41,7 +47,12 @@ func TestRenderLegendVariants(t *testing.T) {
 	if out := renderLegend(m); !strings.Contains(out, "ctrl+f") {
 		t.Fatalf("unexpected search legend: %q", out)
 	}
-	m = Model{activeTab: tabFilm, film: letterboxd.Film{URL: letterboxd.BaseURL + "/film/inception/"}, watchlistLoaded: true}
+	m = Model{
+		activeTab:       tabFilm,
+		film:            letterboxd.Film{URL: letterboxd.BaseURL + "/film/inception/"},
+		watchlistLoaded: true,
+		client:          &letterboxd.Client{Cookie: "foo=bar"},
+	}
 	if out := renderLegend(m); !strings.Contains(out, "add to watchlist") {
 		t.Fatalf("unexpected film legend: %q", out)
 	}
@@ -49,6 +60,10 @@ func TestRenderLegendVariants(t *testing.T) {
 	m.film.InWatchlist = true
 	if out := renderLegend(m); !strings.Contains(out, "remove from watchlist") {
 		t.Fatalf("unexpected film legend: %q", out)
+	}
+	m.client = nil
+	if out := renderLegend(m); strings.Contains(out, "watchlist") || strings.Contains(out, "log entry") {
+		t.Fatalf("expected cookie-required actions hidden: %q", out)
 	}
 	m = Model{profileModal: true}
 	if out := renderLegend(m); !strings.Contains(out, "close profile") {

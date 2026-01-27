@@ -124,6 +124,13 @@ func NewModel(username string, client *letterboxd.Client) Model {
 	}
 }
 
+func (m Model) hasCookie() bool {
+	if m.client == nil {
+		return false
+	}
+	return strings.TrimSpace(m.client.Cookie) != ""
+}
+
 func (m *Model) moveSelection(delta int) {
 	switch m.activeTab {
 	case tabDiary:
@@ -320,6 +327,9 @@ func (m *Model) maybeLoadMoreCmd() tea.Cmd {
 		m.activityLoadingMore = true
 		return fetchActivityCmd(m.client, m.username, tabActivity, after)
 	case tabFollowing:
+		if !m.hasCookie() {
+			return nil
+		}
 		if m.followLoadingMore || m.followDone || m.followMoreErr != nil {
 			return nil
 		}
@@ -393,6 +403,9 @@ func (m *Model) maybeFillCmd() tea.Cmd {
 		m.activityLoadingMore = true
 		return fetchActivityCmd(m.client, m.username, tabActivity, after)
 	case tabFollowing:
+		if !m.hasCookie() {
+			return nil
+		}
 		if m.followLoadingMore || m.followDone || m.followMoreErr != nil {
 			return nil
 		}
@@ -417,6 +430,9 @@ func (m Model) hasPopularReviewsSection() bool {
 }
 
 func (m Model) hasFriendReviewsSection() bool {
+	if !m.hasCookie() {
+		return false
+	}
 	return len(m.friendReviews) > 0 || m.friendReviewsErr != nil || m.friendReviewsLoadingMore || m.friendReviewsMoreErr != nil
 }
 
