@@ -83,7 +83,12 @@ func (m Model) helpMap() helpKeyMap {
 		}
 		back := tabHelp("back")
 		modalBack := backHelp("esc/q", "esc", "q")
-		return newHelpKeyMap([]key.Binding{navScroll, page, keys.JumpTop, keys.JumpBottom, keys.Log, watchHint, keys.Open, back, modalBack, helpToggle, keys.QuitAll})
+		short := []key.Binding{navScroll, page, keys.JumpTop, keys.JumpBottom}
+		if m.hasCookie() {
+			short = append(short, keys.Log, watchHint)
+		}
+		short = append(short, keys.Open, back, modalBack, helpToggle, keys.QuitAll)
+		return newHelpKeyMap(short)
 	case m.activeTab == tabSearch:
 		switchTabs := tabHelp("switch tab")
 		if m.searchFocusInput {

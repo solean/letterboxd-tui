@@ -72,13 +72,16 @@ type watchlistResultMsg struct {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		fetchProfileCmd(m.client, m.profileUser),
 		fetchDiaryCmd(m.client, m.username, 1),
 		fetchWatchlistCmd(m.client, m.username, 1),
 		fetchActivityCmd(m.client, m.username, tabActivity, ""),
-		fetchActivityCmd(m.client, m.username, tabFollowing, ""),
-	)
+	}
+	if m.hasCookie() {
+		cmds = append(cmds, fetchActivityCmd(m.client, m.username, tabFollowing, ""))
+	}
+	return tea.Batch(cmds...)
 }
 
 func fetchProfileCmd(client *letterboxd.Client, username string) tea.Cmd {

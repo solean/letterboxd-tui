@@ -10,17 +10,23 @@ import (
 )
 
 func TestTabNavigation(t *testing.T) {
-	if len(visibleTabs()) == 0 {
+	withCookie := Model{client: &letterboxd.Client{Cookie: "foo=bar"}}
+	if len(visibleTabs(withCookie)) == 0 {
 		t.Fatalf("expected visible tabs")
 	}
-	if visibleTabByIndex(-1) != tabProfile {
+	if visibleTabByIndex(withCookie, -1) != tabProfile {
 		t.Fatalf("expected profile for invalid index")
 	}
-	if nextTab(tabSearch) != tabProfile {
+	if nextTab(withCookie, tabSearch) != tabProfile {
 		t.Fatalf("expected wrap to profile")
 	}
-	if prevTab(tabProfile) != tabSearch {
+	if prevTab(withCookie, tabProfile) != tabSearch {
 		t.Fatalf("expected wrap to search")
+	}
+	for _, tab := range visibleTabs(Model{}) {
+		if tab == tabFollowing {
+			t.Fatalf("expected friends tab hidden without cookie")
+		}
 	}
 }
 
@@ -48,6 +54,7 @@ func TestRenderHelpVariants(t *testing.T) {
 	m.activeTab = tabFilm
 	m.film = letterboxd.Film{URL: letterboxd.BaseURL + "/film/inception/"}
 	m.watchlistLoaded = true
+	m.client = &letterboxd.Client{Cookie: "foo=bar"}
 	if out := renderHelp(m, theme, 120); !strings.Contains(out, "add to watchlist") {
 		t.Fatalf("unexpected film help: %q", out)
 	}
@@ -55,6 +62,10 @@ func TestRenderHelpVariants(t *testing.T) {
 	m.film.InWatchlist = true
 	if out := renderHelp(m, theme, 120); !strings.Contains(out, "remove from watchlist") {
 		t.Fatalf("unexpected film help: %q", out)
+	}
+	m.client = nil
+	if out := renderHelp(m, theme, 120); strings.Contains(out, "watchlist") || strings.Contains(out, "log entry") {
+		t.Fatalf("expected cookie-required actions hidden: %q", out)
 	}
 	m = NewModel("jane", nil)
 	m.profileModal = true

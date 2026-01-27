@@ -142,7 +142,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 			} else {
-				m.activeTab = nextTab(m.activeTab)
+				m.activeTab = nextTab(m, m.activeTab)
 			}
 			m.resetTabPosition()
 			return m, m.maybeFillCmd()
@@ -150,7 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 			} else {
-				m.activeTab = prevTab(m.activeTab)
+				m.activeTab = prevTab(m, m.activeTab)
 			}
 			m.resetTabPosition()
 			return m, m.maybeFillCmd()
@@ -203,13 +203,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(ev, m.keys.Refresh):
 			m.loading = true
 			m.resetPagination()
-			return m, tea.Batch(
+			cmds := []tea.Cmd{
 				fetchProfileCmd(m.client, m.profileUser),
 				fetchDiaryCmd(m.client, m.username, 1),
 				fetchWatchlistCmd(m.client, m.username, 1),
 				fetchActivityCmd(m.client, m.username, tabActivity, ""),
-				fetchActivityCmd(m.client, m.username, tabFollowing, ""),
-			)
+			}
+			if m.hasCookie() {
+				cmds = append(cmds, fetchActivityCmd(m.client, m.username, tabFollowing, ""))
+			}
+			return m, tea.Batch(cmds...)
 		case key.Matches(ev, m.keys.Select):
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
@@ -230,12 +233,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case key.Matches(ev, m.keys.Log):
-			if m.activeTab == tabFilm {
+			if m.activeTab == tabFilm && m.hasCookie() {
 				m = m.startLogModal()
 				return m, m.logSpinner.Tick
 			}
 		case key.Matches(ev, m.keys.WatchlistAdd):
-			if m.activeTab == tabFilm {
+			if m.activeTab == tabFilm && m.hasCookie() {
 				if m.watchlistPending {
 					return m, nil
 				}
@@ -252,7 +255,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, setWatchlistCmd(m.client, req, true)
 			}
 		case key.Matches(ev, m.keys.WatchlistRemove):
-			if m.activeTab == tabFilm {
+			if m.activeTab == tabFilm && m.hasCookie() {
 				if m.watchlistPending {
 					return m, nil
 				}
@@ -353,10 +356,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.refreshModalViewport()
 		if ev.film.Slug != "" {
-			return m, tea.Batch(
-				fetchReviewsCmd(m.client, ev.film.Slug, "popular", 1),
-				fetchReviewsCmd(m.client, ev.film.Slug, "friends", 1),
-			)
+			cmds := []tea.Cmd{fetchReviewsCmd(m.client, ev.film.Slug, "popular", 1)}
+			if m.hasCookie() {
+				cmds = append(cmds, fetchReviewsCmd(m.client, ev.film.Slug, "friends", 1))
+			}
+			return m, tea.Batch(cmds...)
 		}
 	case searchMsg:
 		m.searchResults = ev.results
