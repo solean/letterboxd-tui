@@ -90,7 +90,7 @@ func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) 
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	applyDefaultHeaders(httpReq)
 	httpReq.Header.Set("Content-Type", "application/json; charset=UTF-8")
 	httpReq.Header.Set("Accept", "*/*")
 	httpReq.Header.Set("Origin", BaseURL)
@@ -125,7 +125,7 @@ func (c *Client) postWatchlist(reqURL string, values url.Values, referer string)
 	if err != nil {
 		return 0, err
 	}
-	httpReq.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	applyDefaultHeaders(httpReq)
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("Origin", BaseURL)
 	httpReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")

@@ -15,6 +15,8 @@ type Client struct {
 	Cookie string
 }
 
+const defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 func NewClient(httpClient *http.Client, cookie string) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 12 * time.Second}
@@ -122,7 +124,7 @@ func (c *Client) fetchDocument(url string) (*goquery.Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	applyDefaultHeaders(req)
 	if c.Cookie != "" {
 		req.Header.Set("Cookie", c.Cookie)
 	}
@@ -179,7 +181,7 @@ func (c *Client) fetchDocumentAllowStatus(url string) (*goquery.Document, int, e
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	applyDefaultHeaders(req)
 	if c.Cookie != "" {
 		req.Header.Set("Cookie", c.Cookie)
 	}
@@ -193,4 +195,10 @@ func (c *Client) fetchDocumentAllowStatus(url string) (*goquery.Document, int, e
 	}
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	return doc, resp.StatusCode, err
+}
+
+func applyDefaultHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", defaultUserAgent)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 }
