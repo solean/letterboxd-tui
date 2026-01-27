@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"letterboxd-tui/internal/letterboxd"
 )
@@ -32,59 +33,81 @@ type listState struct {
 }
 
 type Model struct {
-	username         string
-	profileUser      string
-	profileStack     []string
-	client           *letterboxd.Client
-	width            int
-	height           int
-	activeTab        tab
-	lastTab          tab
-	profile          letterboxd.Profile
-	diary            []letterboxd.DiaryEntry
-	watchlist        []letterboxd.WatchlistItem
-	watchlistLoaded  bool
-	activity         []letterboxd.ActivityItem
-	following        []letterboxd.ActivityItem
-	searchResults    []letterboxd.SearchResult
-	film             letterboxd.Film
-	modalProfile     letterboxd.Profile
-	popReviews       []letterboxd.Review
-	friendReviews    []letterboxd.Review
-	profileErr       error
-	diaryErr         error
-	watchErr         error
-	activityErr      error
-	followErr        error
-	filmErr          error
-	popReviewsErr    error
-	friendReviewsErr error
-	searchErr        error
-	modalProfileErr  error
-	loading          bool
-	modalLoading     bool
-	searchLoading    bool
-	diaryList        listState
-	watchList        listState
-	actList          listState
-	followList       listState
-	searchList       listState
-	viewport         viewport.Model
-	modalVP          viewport.Model
-	filmReturn       tab
-	profileModal     bool
-	modalUser        string
-	logModal         bool
-	logForm          logForm
-	logSpinner       spinner.Model
-	watchlistStatus  string
-	watchlistPending bool
-	searchInput      textinput.Model
-	searchFocusInput bool
-	keys             keyMap
-	help             help.Model
-	pendingG         bool
-	pendingGAt       time.Time
+	username                 string
+	profileUser              string
+	profileStack             []string
+	client                   *letterboxd.Client
+	width                    int
+	height                   int
+	activeTab                tab
+	lastTab                  tab
+	profile                  letterboxd.Profile
+	diary                    []letterboxd.DiaryEntry
+	watchlist                []letterboxd.WatchlistItem
+	watchlistLoaded          bool
+	activity                 []letterboxd.ActivityItem
+	following                []letterboxd.ActivityItem
+	searchResults            []letterboxd.SearchResult
+	film                     letterboxd.Film
+	modalProfile             letterboxd.Profile
+	popReviews               []letterboxd.Review
+	friendReviews            []letterboxd.Review
+	popReviewsPage           int
+	friendReviewsPage        int
+	popReviewsDone           bool
+	friendReviewsDone        bool
+	popReviewsLoadingMore    bool
+	friendReviewsLoadingMore bool
+	popReviewsMoreErr        error
+	friendReviewsMoreErr     error
+	profileErr               error
+	diaryErr                 error
+	watchErr                 error
+	activityErr              error
+	followErr                error
+	filmErr                  error
+	popReviewsErr            error
+	friendReviewsErr         error
+	searchErr                error
+	modalProfileErr          error
+	loading                  bool
+	modalLoading             bool
+	searchLoading            bool
+	diaryList                listState
+	watchList                listState
+	actList                  listState
+	followList               listState
+	searchList               listState
+	diaryPage                int
+	watchPage                int
+	diaryLoadingMore         bool
+	watchLoadingMore         bool
+	activityLoadingMore      bool
+	followLoadingMore        bool
+	diaryDone                bool
+	watchDone                bool
+	activityDone             bool
+	followDone               bool
+	diaryMoreErr             error
+	watchMoreErr             error
+	activityMoreErr          error
+	followMoreErr            error
+	viewport                 viewport.Model
+	modalVP                  viewport.Model
+	filmReturn               tab
+	profileModal             bool
+	modalUser                string
+	logModal                 bool
+	logForm                  logForm
+	logSpinner               spinner.Model
+	watchlistStatus          string
+	watchlistPending         bool
+	searchInput              textinput.Model
+	searchFocusInput         bool
+	keys                     keyMap
+	help                     help.Model
+	pendingG                 bool
+	pendingGAt               time.Time
 }
 
 func NewModel(username string, client *letterboxd.Client) Model {
@@ -321,6 +344,241 @@ func (m *Model) jumpToBottom() {
 	}
 }
 
+func (m *Model) resetPagination() {
+	m.diaryPage = 0
+	m.watchPage = 0
+	m.diaryLoadingMore = false
+	m.watchLoadingMore = false
+	m.activityLoadingMore = false
+	m.followLoadingMore = false
+	m.diaryDone = false
+	m.watchDone = false
+	m.activityDone = false
+	m.followDone = false
+	m.diaryMoreErr = nil
+	m.watchMoreErr = nil
+	m.activityMoreErr = nil
+	m.followMoreErr = nil
+}
+
+func (m *Model) maybeLoadMoreCmd() tea.Cmd {
+	const threshold = 3
+	switch m.activeTab {
+	case tabDiary:
+		if m.diaryLoadingMore || m.diaryDone || m.diaryMoreErr != nil {
+			return nil
+		}
+		if len(m.diary) == 0 || m.diaryPage == 0 {
+			return nil
+		}
+		if m.diaryList.selected < len(m.diary)-1-threshold {
+			return nil
+		}
+		page := m.diaryPage + 1
+		if page < 2 {
+			page = 2
+		}
+		m.diaryLoadingMore = true
+		return fetchDiaryCmd(m.client, m.username, page)
+	case tabWatchlist:
+		if m.watchLoadingMore || m.watchDone || m.watchMoreErr != nil {
+			return nil
+		}
+		if len(m.watchlist) == 0 || m.watchPage == 0 {
+			return nil
+		}
+		if m.watchList.selected < len(m.watchlist)-1-threshold {
+			return nil
+		}
+		page := m.watchPage + 1
+		if page < 2 {
+			page = 2
+		}
+		m.watchLoadingMore = true
+		return fetchWatchlistCmd(m.client, m.username, page)
+	case tabActivity:
+		if m.activityLoadingMore || m.activityDone || m.activityMoreErr != nil {
+			return nil
+		}
+		if len(m.activity) == 0 {
+			return nil
+		}
+		if m.actList.selected < len(m.activity)-1-threshold {
+			return nil
+		}
+		after := lastActivityID(m.activity)
+		if after == "" {
+			return nil
+		}
+		m.activityLoadingMore = true
+		return fetchActivityCmd(m.client, m.username, tabActivity, after)
+	case tabFollowing:
+		if m.followLoadingMore || m.followDone || m.followMoreErr != nil {
+			return nil
+		}
+		if len(m.following) == 0 {
+			return nil
+		}
+		if m.followList.selected < len(m.following)-1-threshold {
+			return nil
+		}
+		after := lastActivityID(m.following)
+		if after == "" {
+			return nil
+		}
+		m.followLoadingMore = true
+		return fetchActivityCmd(m.client, m.username, tabFollowing, after)
+	}
+	return nil
+}
+
+func (m *Model) maybeFillCmd() tea.Cmd {
+	if m.modalOpen() || m.viewport.Height <= 0 {
+		return nil
+	}
+	switch m.activeTab {
+	case tabDiary:
+		if m.diaryLoadingMore || m.diaryDone || m.diaryMoreErr != nil {
+			return nil
+		}
+		if m.diaryPage == 0 || len(m.diary) == 0 {
+			return nil
+		}
+		if len(m.diary) >= m.viewport.Height {
+			return nil
+		}
+		page := m.diaryPage + 1
+		if page < 2 {
+			page = 2
+		}
+		m.diaryLoadingMore = true
+		return fetchDiaryCmd(m.client, m.username, page)
+	case tabWatchlist:
+		if m.watchLoadingMore || m.watchDone || m.watchMoreErr != nil {
+			return nil
+		}
+		if m.watchPage == 0 || len(m.watchlist) == 0 {
+			return nil
+		}
+		if len(m.watchlist) >= m.viewport.Height {
+			return nil
+		}
+		page := m.watchPage + 1
+		if page < 2 {
+			page = 2
+		}
+		m.watchLoadingMore = true
+		return fetchWatchlistCmd(m.client, m.username, page)
+	case tabActivity:
+		if m.activityLoadingMore || m.activityDone || m.activityMoreErr != nil {
+			return nil
+		}
+		if len(m.activity) == 0 {
+			return nil
+		}
+		if len(m.activity) >= m.viewport.Height {
+			return nil
+		}
+		after := lastActivityID(m.activity)
+		if after == "" {
+			return nil
+		}
+		m.activityLoadingMore = true
+		return fetchActivityCmd(m.client, m.username, tabActivity, after)
+	case tabFollowing:
+		if m.followLoadingMore || m.followDone || m.followMoreErr != nil {
+			return nil
+		}
+		if len(m.following) == 0 {
+			return nil
+		}
+		if len(m.following) >= m.viewport.Height {
+			return nil
+		}
+		after := lastActivityID(m.following)
+		if after == "" {
+			return nil
+		}
+		m.followLoadingMore = true
+		return fetchActivityCmd(m.client, m.username, tabFollowing, after)
+	}
+	return nil
+}
+
+func (m Model) hasPopularReviewsSection() bool {
+	return len(m.popReviews) > 0 || m.popReviewsErr != nil || m.popReviewsLoadingMore || m.popReviewsMoreErr != nil
+}
+
+func (m Model) hasFriendReviewsSection() bool {
+	return len(m.friendReviews) > 0 || m.friendReviewsErr != nil || m.friendReviewsLoadingMore || m.friendReviewsMoreErr != nil
+}
+
+func (m *Model) maybeLoadMoreReviewsCmd() tea.Cmd {
+	if m.activeTab != tabFilm || m.logModal {
+		return nil
+	}
+	if m.film.Slug == "" {
+		return nil
+	}
+	if m.modalVP.Height <= 0 {
+		return nil
+	}
+	if m.modalVP.ScrollPercent() < 0.85 {
+		return nil
+	}
+
+	kind := ""
+	if m.hasPopularReviewsSection() {
+		kind = "popular"
+	} else if m.hasFriendReviewsSection() {
+		kind = "friends"
+	}
+	if kind == "" {
+		return nil
+	}
+
+	switch kind {
+	case "popular":
+		if m.popReviewsLoadingMore || m.popReviewsDone || m.popReviewsMoreErr != nil {
+			return nil
+		}
+		if m.popReviewsPage == 0 || len(m.popReviews) == 0 {
+			return nil
+		}
+		page := m.popReviewsPage + 1
+		if page < 2 {
+			page = 2
+		}
+		m.popReviewsLoadingMore = true
+		m.refreshModalViewport()
+		return fetchReviewsCmd(m.client, m.film.Slug, "popular", page)
+	case "friends":
+		if m.friendReviewsLoadingMore || m.friendReviewsDone || m.friendReviewsMoreErr != nil {
+			return nil
+		}
+		if m.friendReviewsPage == 0 || len(m.friendReviews) == 0 {
+			return nil
+		}
+		page := m.friendReviewsPage + 1
+		if page < 2 {
+			page = 2
+		}
+		m.friendReviewsLoadingMore = true
+		m.refreshModalViewport()
+		return fetchReviewsCmd(m.client, m.film.Slug, "friends", page)
+	}
+	return nil
+}
+
+func lastActivityID(items []letterboxd.ActivityItem) string {
+	for i := len(items) - 1; i >= 0; i-- {
+		if items[i].ID != "" {
+			return items[i].ID
+		}
+	}
+	return ""
+}
+
 func (m Model) openSelectedProfile() Model {
 	if m.activeTab != tabFollowing || len(m.following) == 0 {
 		return m
@@ -380,6 +638,14 @@ func (m Model) openSelectedFilm() Model {
 	m.filmErr = nil
 	m.popReviews = nil
 	m.friendReviews = nil
+	m.popReviewsPage = 0
+	m.friendReviewsPage = 0
+	m.popReviewsDone = false
+	m.friendReviewsDone = false
+	m.popReviewsLoadingMore = false
+	m.friendReviewsLoadingMore = false
+	m.popReviewsMoreErr = nil
+	m.friendReviewsMoreErr = nil
 	m.popReviewsErr = nil
 	m.friendReviewsErr = nil
 	m.watchlistPending = false

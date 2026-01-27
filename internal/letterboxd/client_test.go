@@ -59,7 +59,7 @@ func TestClientMethods(t *testing.T) {
 			return newHTTPResponse(http.StatusOK, `{"lid":"lid123","uid":"uid123","id":123,"url":"/film/inception/","inWatchlist":true}`, nil), nil
 		case "/jane/film/inception/":
 			return newHTTPResponse(http.StatusOK, userFilmHTML, nil), nil
-		case "/ajax/film/inception/popular-reviews/":
+		case "/film/inception/reviews/by/activity/page/1/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil
 		case "/csi/film/inception/friend-reviews/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil
@@ -71,16 +71,16 @@ func TestClientMethods(t *testing.T) {
 	if _, err := client.Profile("jane"); err != nil {
 		t.Fatalf("Profile error: %v", err)
 	}
-	if _, err := client.Diary("jane"); err != nil {
+	if _, err := client.Diary("jane", 1); err != nil {
 		t.Fatalf("Diary error: %v", err)
 	}
-	if _, err := client.Watchlist("jane"); err != nil {
+	if _, err := client.Watchlist("jane", 1); err != nil {
 		t.Fatalf("Watchlist error: %v", err)
 	}
-	if _, err := client.Activity("jane"); err != nil {
+	if _, err := client.Activity("jane", ""); err != nil {
 		t.Fatalf("Activity error: %v", err)
 	}
-	if _, err := client.FollowingActivity("jane"); err != nil {
+	if _, err := client.FollowingActivity("jane", ""); err != nil {
 		t.Fatalf("FollowingActivity error: %v", err)
 	}
 	if _, err := client.SearchFilms("inception"); err != nil {
@@ -93,10 +93,10 @@ func TestClientMethods(t *testing.T) {
 	if film.WatchlistID != "lid123" || film.FilmID != "123" || film.ViewingUID != "film:123" {
 		t.Fatalf("unexpected film metadata: %+v", film)
 	}
-	if _, err := client.PopularReviews("inception"); err != nil {
+	if _, err := client.PopularReviews("inception", 1); err != nil {
 		t.Fatalf("PopularReviews error: %v", err)
 	}
-	if _, err := client.FriendReviews("inception"); err != nil {
+	if _, err := client.FriendReviews("inception", 1); err != nil {
 		t.Fatalf("FriendReviews error: %v", err)
 	}
 }

@@ -25,7 +25,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.searchInput.Width = max(10, m.width-4)
 		m.refreshModalViewport()
-		return m, nil
+		cmd := m.maybeFillCmd()
+		if m.activeTab == tabFilm {
+			cmd = tea.Batch(cmd, m.maybeLoadMoreReviewsCmd())
+		}
+		return m, cmd
 	}
 
 	switch sm := msg.(type) {
@@ -39,15 +43,60 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if rm, ok := msg.(reviewsMsg); ok {
-		if rm.kind == "popular" {
-			m.popReviews = rm.reviews
-			m.popReviewsErr = rm.err
-		} else {
-			m.friendReviews = rm.reviews
-			m.friendReviewsErr = rm.err
+		switch rm.kind {
+		case "popular":
+			if rm.page <= 1 {
+				m.popReviews = rm.reviews
+				m.popReviewsErr = rm.err
+				m.popReviewsPage = max(1, rm.page)
+				m.popReviewsDone = rm.err == nil && len(rm.reviews) == 0
+				m.popReviewsLoadingMore = false
+				m.popReviewsMoreErr = nil
+			} else {
+				m.popReviewsLoadingMore = false
+				if rm.err != nil {
+					m.popReviewsMoreErr = rm.err
+					m.refreshModalViewport()
+					return m, nil
+				}
+				m.popReviewsMoreErr = nil
+				var added int
+				m.popReviews, added = appendReviews(m.popReviews, rm.reviews)
+				if added == 0 {
+					m.popReviewsDone = true
+				} else {
+					m.popReviewsPage = rm.page
+				}
+			}
+		case "friends":
+			if rm.page <= 1 {
+				m.friendReviews = rm.reviews
+				m.friendReviewsErr = rm.err
+				m.friendReviewsPage = max(1, rm.page)
+				m.friendReviewsDone = rm.err == nil && len(rm.reviews) == 0
+				m.friendReviewsLoadingMore = false
+				m.friendReviewsMoreErr = nil
+			} else {
+				m.friendReviewsLoadingMore = false
+				if rm.err != nil {
+					m.friendReviewsMoreErr = rm.err
+					m.refreshModalViewport()
+					return m, nil
+				}
+				m.friendReviewsMoreErr = nil
+				var added int
+				m.friendReviews, added = appendReviews(m.friendReviews, rm.reviews)
+				if added == 0 {
+					m.friendReviewsDone = true
+				} else {
+					m.friendReviewsPage = rm.page
+				}
+			}
+		default:
+			return m, nil
 		}
 		m.refreshModalViewport()
-		return m, nil
+		return m, m.maybeLoadMoreReviewsCmd()
 	}
 
 	if m.logModal {
@@ -96,6 +145,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = nextTab(m.activeTab)
 			}
 			m.resetTabPosition()
+			return m, m.maybeFillCmd()
 		case key.Matches(ev, m.keys.PrevTab):
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
@@ -103,14 +153,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = prevTab(m.activeTab)
 			}
 			m.resetTabPosition()
+			return m, m.maybeFillCmd()
 		case key.Matches(ev, m.keys.Down):
 			if m.modalOpen() {
 				m.modalVP.LineDown(1)
+				if m.activeTab == tabFilm {
+					return m, m.maybeLoadMoreReviewsCmd()
+				}
 			} else if m.activeTab == tabProfile {
 				m.viewport.LineDown(1)
 			} else {
 				m.moveSelection(1)
 				m.syncViewportToSelection()
+				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.Up):
 			if m.modalOpen() {
@@ -120,15 +175,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.moveSelection(-1)
 				m.syncViewportToSelection()
+				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.PageDown):
 			if m.modalOpen() {
 				m.modalVP.ViewDown()
+				if m.activeTab == tabFilm {
+					return m, m.maybeLoadMoreReviewsCmd()
+				}
 			} else if m.activeTab == tabProfile {
 				m.viewport.ViewDown()
 			} else {
 				m.pageSelection(1)
 				m.syncViewportToSelection()
+				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.PageUp):
 			if m.modalOpen() {
@@ -138,15 +198,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.pageSelection(-1)
 				m.syncViewportToSelection()
+				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.Refresh):
 			m.loading = true
+			m.resetPagination()
 			return m, tea.Batch(
 				fetchProfileCmd(m.client, m.profileUser),
-				fetchDiaryCmd(m.client, m.username),
-				fetchWatchlistCmd(m.client, m.username),
-				fetchActivityCmd(m.client, m.username, tabActivity),
-				fetchActivityCmd(m.client, m.username, tabFollowing),
+				fetchDiaryCmd(m.client, m.username, 1),
+				fetchWatchlistCmd(m.client, m.username, 1),
+				fetchActivityCmd(m.client, m.username, tabActivity, ""),
+				fetchActivityCmd(m.client, m.username, tabFollowing, ""),
 			)
 		case key.Matches(ev, m.keys.Select):
 			if m.activeTab == tabFollowing {
@@ -235,14 +297,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = false
 		}
 	case diaryMsg:
-		m.diary = ev.items
-		m.diaryErr = ev.err
-		m.loading = false
+		if ev.page <= 1 {
+			m.diary = ev.items
+			m.diaryErr = ev.err
+			m.diaryPage = max(1, ev.page)
+			m.diaryDone = ev.err == nil && len(ev.items) == 0
+			m.diaryLoadingMore = false
+			m.diaryMoreErr = nil
+			m.loading = false
+		} else {
+			m.diaryLoadingMore = false
+			if ev.err != nil {
+				m.diaryMoreErr = ev.err
+				return m, nil
+			}
+			m.diaryMoreErr = nil
+			var added int
+			m.diary, added = appendDiaryEntries(m.diary, ev.items)
+			if added == 0 {
+				m.diaryDone = true
+			} else {
+				m.diaryPage = ev.page
+			}
+		}
+		return m, m.maybeFillCmd()
 	case watchlistMsg:
-		m.watchlist = ev.items
-		m.watchErr = ev.err
-		m.watchlistLoaded = true
-		m.loading = false
+		if ev.page <= 1 {
+			m.watchlist = ev.items
+			m.watchErr = ev.err
+			m.watchlistLoaded = true
+			m.watchPage = max(1, ev.page)
+			m.watchDone = ev.err == nil && len(ev.items) == 0
+			m.watchLoadingMore = false
+			m.watchMoreErr = nil
+			m.loading = false
+		} else {
+			m.watchLoadingMore = false
+			if ev.err != nil {
+				m.watchMoreErr = ev.err
+				return m, nil
+			}
+			m.watchMoreErr = nil
+			var added int
+			m.watchlist, added = appendWatchlistItems(m.watchlist, ev.items)
+			if added == 0 {
+				m.watchDone = true
+			} else {
+				m.watchPage = ev.page
+			}
+		}
+		return m, m.maybeFillCmd()
 	case filmMsg:
 		m.film = ev.film
 		m.filmErr = ev.err
@@ -250,8 +354,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshModalViewport()
 		if ev.film.Slug != "" {
 			return m, tea.Batch(
-				fetchReviewsCmd(m.client, ev.film.Slug, "popular"),
-				fetchReviewsCmd(m.client, ev.film.Slug, "friends"),
+				fetchReviewsCmd(m.client, ev.film.Slug, "popular", 1),
+				fetchReviewsCmd(m.client, ev.film.Slug, "friends", 1),
 			)
 		}
 	case searchMsg:
@@ -262,14 +366,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.searchFocusInput = false
 		m.syncViewportToSelection()
 	case activityMsg:
-		if ev.tab == tabActivity {
-			m.activity = ev.items
-			m.activityErr = ev.err
-		} else {
-			m.following = ev.items
-			m.followErr = ev.err
+		if ev.after == "" {
+			if ev.tab == tabActivity {
+				m.activity = ev.items
+				m.activityErr = ev.err
+				m.activityDone = ev.err == nil && len(ev.items) == 0
+				m.activityLoadingMore = false
+				m.activityMoreErr = nil
+			} else {
+				m.following = ev.items
+				m.followErr = ev.err
+				m.followDone = ev.err == nil && len(ev.items) == 0
+				m.followLoadingMore = false
+				m.followMoreErr = nil
+			}
+			m.loading = false
+			return m, m.maybeFillCmd()
 		}
-		m.loading = false
+		if ev.tab == tabActivity {
+			m.activityLoadingMore = false
+			if ev.err != nil {
+				m.activityMoreErr = ev.err
+				return m, nil
+			}
+			m.activityMoreErr = nil
+			var added int
+			m.activity, added = appendActivityItems(m.activity, ev.items)
+			if added == 0 {
+				m.activityDone = true
+			}
+		} else {
+			m.followLoadingMore = false
+			if ev.err != nil {
+				m.followMoreErr = ev.err
+				return m, nil
+			}
+			m.followMoreErr = nil
+			var added int
+			m.following, added = appendActivityItems(m.following, ev.items)
+			if added == 0 {
+				m.followDone = true
+			}
+		}
+		return m, m.maybeFillCmd()
 	case errMsg:
 		m.diaryErr = ev.err
 		m.loading = false
@@ -294,7 +433,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, tea.Batch(
 			fetchFilmCmd(m.client, m.film.URL, m.username),
-			fetchWatchlistCmd(m.client, m.username),
+			fetchWatchlistCmd(m.client, m.username, 1),
 		)
 	}
 	return m, nil
@@ -513,4 +652,136 @@ func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logForm.review, _ = m.logForm.review.Update(msg)
 	}
 	return m, nil
+}
+
+func appendDiaryEntries(existing, incoming []letterboxd.DiaryEntry) ([]letterboxd.DiaryEntry, int) {
+	seen := make(map[string]struct{}, len(existing))
+	for _, entry := range existing {
+		key := diaryKey(entry)
+		if key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	added := 0
+	for _, entry := range incoming {
+		key := diaryKey(entry)
+		if key != "" {
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		existing = append(existing, entry)
+		added++
+	}
+	return existing, added
+}
+
+func diaryKey(entry letterboxd.DiaryEntry) string {
+	if entry.FilmURL != "" {
+		return entry.FilmURL + "|" + entry.Date
+	}
+	if entry.Title != "" {
+		return entry.Title + "|" + entry.Date
+	}
+	return ""
+}
+
+func appendWatchlistItems(existing, incoming []letterboxd.WatchlistItem) ([]letterboxd.WatchlistItem, int) {
+	seen := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		key := watchlistKey(item)
+		if key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	added := 0
+	for _, item := range incoming {
+		key := watchlistKey(item)
+		if key != "" {
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		existing = append(existing, item)
+		added++
+	}
+	return existing, added
+}
+
+func watchlistKey(item letterboxd.WatchlistItem) string {
+	if item.FilmURL != "" {
+		return item.FilmURL
+	}
+	if item.Title != "" {
+		return item.Title + "|" + item.Year
+	}
+	return ""
+}
+
+func appendActivityItems(existing, incoming []letterboxd.ActivityItem) ([]letterboxd.ActivityItem, int) {
+	seen := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		key := activityKey(item)
+		if key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	added := 0
+	for _, item := range incoming {
+		key := activityKey(item)
+		if key != "" {
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		existing = append(existing, item)
+		added++
+	}
+	return existing, added
+}
+
+func activityKey(item letterboxd.ActivityItem) string {
+	if item.ID != "" {
+		return item.ID
+	}
+	if item.FilmURL != "" || item.ActorURL != "" {
+		return item.ActorURL + "|" + item.FilmURL + "|" + item.When
+	}
+	return item.Summary + "|" + item.When
+}
+
+func appendReviews(existing, incoming []letterboxd.Review) ([]letterboxd.Review, int) {
+	seen := make(map[string]struct{}, len(existing))
+	for _, review := range existing {
+		key := reviewKey(review)
+		if key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	added := 0
+	for _, review := range incoming {
+		key := reviewKey(review)
+		if key != "" {
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		existing = append(existing, review)
+		added++
+	}
+	return existing, added
+}
+
+func reviewKey(review letterboxd.Review) string {
+	if review.Link != "" {
+		return review.Link
+	}
+	if review.Author != "" || review.Text != "" || review.Rating != "" {
+		return review.Author + "|" + review.Rating + "|" + review.Text
+	}
+	return ""
 }

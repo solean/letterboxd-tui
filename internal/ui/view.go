@@ -25,9 +25,9 @@ func (m Model) View() string {
 	case tabFilm:
 		body = renderFilm(m, theme)
 	case tabActivity:
-		body = renderActivity(m.activity, m.activityErr, m.actList.selected, m.width, theme)
+		body = renderActivityWithStatus(m.activity, m.activityErr, m.activityMoreErr, m.actList.selected, m.width, m.activityLoadingMore, m.activityDone, theme)
 	case tabFollowing:
-		body = renderActivity(m.following, m.followErr, m.followList.selected, m.width, theme)
+		body = renderActivityWithStatus(m.following, m.followErr, m.followMoreErr, m.followList.selected, m.width, m.followLoadingMore, m.followDone, theme)
 	case tabSearch:
 		body = renderSearch(m, theme)
 	}
@@ -136,6 +136,9 @@ func renderDiary(m Model, theme themeStyles) string {
 		line := fmt.Sprintf("%s %s %s%s", date, entry.Title, rating, flags)
 		rows = append(rows, renderSelectableLine(line, i == m.diaryList.selected, width, theme))
 	}
+	if status := renderListStatus(m.diaryLoadingMore, m.diaryMoreErr, m.diaryDone, theme); status != "" {
+		rows = append(rows, status)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
@@ -157,6 +160,9 @@ func renderWatchlist(m Model, theme themeStyles) string {
 			title = fmt.Sprintf("%s (%s)", item.Title, item.Year)
 		}
 		rows = append(rows, renderSelectableLine(title, i == m.watchList.selected, width, theme))
+	}
+	if status := renderListStatus(m.watchLoadingMore, m.watchMoreErr, m.watchDone, theme); status != "" {
+		rows = append(rows, status)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -300,10 +306,10 @@ func renderFilm(m Model, theme themeStyles) string {
 		rows = append(rows, "", theme.dim.Render(truncate(m.film.URL, wrapWidth)))
 	}
 	if len(m.friendReviews) > 0 || m.friendReviewsErr != nil {
-		rows = append(rows, "", renderReviews("Friends' reviews", m.friendReviews, m.friendReviewsErr, wrapWidth, theme))
+		rows = append(rows, "", renderReviewsWithStatus("Friends' reviews", m.friendReviews, m.friendReviewsErr, wrapWidth, m.friendReviewsLoadingMore, m.friendReviewsMoreErr, m.friendReviewsDone, theme))
 	}
 	if len(m.popReviews) > 0 || m.popReviewsErr != nil {
-		rows = append(rows, "", renderReviews("Popular reviews", m.popReviews, m.popReviewsErr, wrapWidth, theme))
+		rows = append(rows, "", renderReviewsWithStatus("Popular reviews", m.popReviews, m.popReviewsErr, wrapWidth, m.popReviewsLoadingMore, m.popReviewsMoreErr, m.popReviewsDone, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
@@ -536,6 +542,18 @@ func renderReviews(title string, reviews []letterboxd.Review, err error, width i
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
+func renderReviewsWithStatus(title string, reviews []letterboxd.Review, err error, width int, loadingMore bool, moreErr error, done bool, theme themeStyles) string {
+	body := renderReviews(title, reviews, err, width, theme)
+	if err != nil || len(reviews) == 0 {
+		return body
+	}
+	status := renderListStatus(loadingMore, moreErr, done, theme)
+	if status == "" {
+		return body
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, body, status)
+}
+
 func renderActivity(items []letterboxd.ActivityItem, err error, selected int, width int, theme themeStyles) string {
 	if err != nil {
 		return theme.dim.Render("Error: " + err.Error())
@@ -558,6 +576,31 @@ func renderActivity(items []letterboxd.ActivityItem, err error, selected int, wi
 		rows = append(rows, renderSelectableLine(line, i == selected, width, theme))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+func renderActivityWithStatus(items []letterboxd.ActivityItem, err, moreErr error, selected int, width int, loadingMore bool, done bool, theme themeStyles) string {
+	body := renderActivity(items, err, selected, width, theme)
+	if err != nil || len(items) == 0 {
+		return body
+	}
+	status := renderListStatus(loadingMore, moreErr, done, theme)
+	if status == "" {
+		return body
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, body, status)
+}
+
+func renderListStatus(loading bool, moreErr error, done bool, theme themeStyles) string {
+	if loading {
+		return theme.dim.Render("Loading more…")
+	}
+	if moreErr != nil {
+		return theme.rateLow.Render("Error loading more: " + moreErr.Error())
+	}
+	if done {
+		return theme.dim.Render("End of list.")
+	}
+	return ""
 }
 
 func renderSummary(item letterboxd.ActivityItem, theme themeStyles) string {
