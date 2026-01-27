@@ -21,10 +21,7 @@ func (c *Client) PopularReviews(slug string, page int) ([]Review, error) {
 	if page < 1 {
 		page = 1
 	}
-	url := fmt.Sprintf("%s/ajax/film/%s/popular-reviews/", BaseURL, slug)
-	if page > 1 {
-		url = fmt.Sprintf("%s/ajax/film/%s/popular-reviews/page/%d/", BaseURL, slug, page)
-	}
+	url := fmt.Sprintf("%s/film/%s/reviews/by/activity/page/%d/", BaseURL, slug, page)
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, err

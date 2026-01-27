@@ -59,7 +59,7 @@ func TestClientMethods(t *testing.T) {
 			return newHTTPResponse(http.StatusOK, `{"lid":"lid123","uid":"uid123","id":123,"url":"/film/inception/","inWatchlist":true}`, nil), nil
 		case "/jane/film/inception/":
 			return newHTTPResponse(http.StatusOK, userFilmHTML, nil), nil
-		case "/ajax/film/inception/popular-reviews/":
+		case "/film/inception/reviews/by/activity/page/1/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil
 		case "/csi/film/inception/friend-reviews/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil

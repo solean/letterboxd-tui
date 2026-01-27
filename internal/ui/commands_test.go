@@ -56,7 +56,7 @@ func TestFetchCommands(t *testing.T) {
 			return newHTTPResponse(http.StatusOK, filmHTML), nil
 		case "/film/inception/json":
 			return newHTTPResponse(http.StatusOK, `{"lid":"lid123","id":123}`), nil
-		case "/ajax/film/inception/popular-reviews/":
+		case "/film/inception/reviews/by/activity/page/1/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
 		case "/csi/film/inception/friend-reviews/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
