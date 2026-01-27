@@ -34,8 +34,11 @@ func (c *Client) Profile(username string) (Profile, error) {
 	return parseProfile(doc)
 }
 
-func (c *Client) Diary(username string) ([]DiaryEntry, error) {
+func (c *Client) Diary(username string, page int) ([]DiaryEntry, error) {
 	url := fmt.Sprintf("%s/%s/diary/", BaseURL, username)
+	if page > 1 {
+		url = fmt.Sprintf("%s/%s/diary/films/page/%d/", BaseURL, username, page)
+	}
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, err
@@ -43,8 +46,11 @@ func (c *Client) Diary(username string) ([]DiaryEntry, error) {
 	return parseDiary(doc)
 }
 
-func (c *Client) Watchlist(username string) ([]WatchlistItem, error) {
+func (c *Client) Watchlist(username string, page int) ([]WatchlistItem, error) {
 	url := fmt.Sprintf("%s/%s/watchlist/", BaseURL, username)
+	if page > 1 {
+		url = fmt.Sprintf("%s/%s/watchlist/page/%d/", BaseURL, username, page)
+	}
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, err
@@ -93,18 +99,18 @@ func (c *Client) Film(filmURL, username string) (Film, error) {
 	return film, nil
 }
 
-func (c *Client) Activity(username string) ([]ActivityItem, error) {
-	url := fmt.Sprintf("%s/ajax/activity-pagination/%s/", BaseURL, username)
-	doc, err := c.fetchDocument(url)
+func (c *Client) Activity(username, after string) ([]ActivityItem, error) {
+	url := activityURL(username, after)
+	doc, err := c.fetchDocumentWithHeaders(url, activityHeaders(username, false))
 	if err != nil {
 		return nil, err
 	}
 	return parseActivity(doc)
 }
 
-func (c *Client) FollowingActivity(username string) ([]ActivityItem, error) {
-	url := followingActivityURL(username, c.Cookie)
-	doc, err := c.fetchDocument(url)
+func (c *Client) FollowingActivity(username, after string) ([]ActivityItem, error) {
+	url := followingActivityURL(username, c.Cookie, after)
+	doc, err := c.fetchDocumentWithHeaders(url, activityHeaders(username, true))
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +135,43 @@ func (c *Client) fetchDocument(url string) (*goquery.Document, error) {
 		return nil, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, url)
 	}
 	return goquery.NewDocumentFromReader(resp.Body)
+}
+
+func (c *Client) fetchDocumentWithHeaders(url string, headers map[string]string) (*goquery.Document, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	if c.Cookie != "" {
+		req.Header.Set("Cookie", c.Cookie)
+	}
+	for key, val := range headers {
+		if key == "" || val == "" {
+			continue
+		}
+		req.Header.Set(key, val)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, url)
+	}
+	return goquery.NewDocumentFromReader(resp.Body)
+}
+
+func activityHeaders(username string, following bool) map[string]string {
+	path := fmt.Sprintf("%s/%s/activity/", BaseURL, username)
+	if following {
+		path = fmt.Sprintf("%s/%s/activity/following/", BaseURL, username)
+	}
+	return map[string]string{
+		"X-Requested-With": "XMLHttpRequest",
+		"Referer":          path,
+	}
 }
 
 func (c *Client) fetchDocumentAllowStatus(url string) (*goquery.Document, int, error) {

@@ -55,6 +55,7 @@ type Film struct {
 }
 
 type ActivityItem struct {
+	ID       string
 	Summary  string
 	When     string
 	Title    string

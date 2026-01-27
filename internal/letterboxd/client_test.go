@@ -71,16 +71,16 @@ func TestClientMethods(t *testing.T) {
 	if _, err := client.Profile("jane"); err != nil {
 		t.Fatalf("Profile error: %v", err)
 	}
-	if _, err := client.Diary("jane"); err != nil {
+	if _, err := client.Diary("jane", 1); err != nil {
 		t.Fatalf("Diary error: %v", err)
 	}
-	if _, err := client.Watchlist("jane"); err != nil {
+	if _, err := client.Watchlist("jane", 1); err != nil {
 		t.Fatalf("Watchlist error: %v", err)
 	}
-	if _, err := client.Activity("jane"); err != nil {
+	if _, err := client.Activity("jane", ""); err != nil {
 		t.Fatalf("Activity error: %v", err)
 	}
-	if _, err := client.FollowingActivity("jane"); err != nil {
+	if _, err := client.FollowingActivity("jane", ""); err != nil {
 		t.Fatalf("FollowingActivity error: %v", err)
 	}
 	if _, err := client.SearchFilms("inception"); err != nil {
@@ -93,10 +93,10 @@ func TestClientMethods(t *testing.T) {
 	if film.WatchlistID != "lid123" || film.FilmID != "123" || film.ViewingUID != "film:123" {
 		t.Fatalf("unexpected film metadata: %+v", film)
 	}
-	if _, err := client.PopularReviews("inception"); err != nil {
+	if _, err := client.PopularReviews("inception", 1); err != nil {
 		t.Fatalf("PopularReviews error: %v", err)
 	}
-	if _, err := client.FriendReviews("inception"); err != nil {
+	if _, err := client.FriendReviews("inception", 1); err != nil {
 		t.Fatalf("FriendReviews error: %v", err)
 	}
 }

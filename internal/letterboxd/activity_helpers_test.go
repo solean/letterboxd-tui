@@ -1,17 +1,30 @@
 package letterboxd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFollowingActivityURL(t *testing.T) {
-	url := followingActivityURL("jane", "foo=bar; com.xk72.webparts.csrf=token123")
+	url := followingActivityURL("jane", "foo=bar; com.xk72.webparts.csrf=token123", "")
 	if url == "" {
 		t.Fatalf("expected URL")
 	}
 	if want := BaseURL + "/ajax/activity-pagination/jane/following/?"; url[:len(want)] != want {
 		t.Fatalf("unexpected URL prefix: %q", url)
 	}
-	if got := followingActivityURL("jane", "foo=bar"); got == url {
+	if got := followingActivityURL("jane", "foo=bar", ""); got == url {
 		t.Fatalf("expected csrf to change URL")
+	}
+}
+
+func TestActivityURLAfter(t *testing.T) {
+	url := activityURL("jane", "123")
+	if want := BaseURL + "/ajax/activity-pagination/jane/"; !strings.HasPrefix(url, want) {
+		t.Fatalf("unexpected url: %q", url)
+	}
+	if !strings.Contains(url, "after=123") {
+		t.Fatalf("expected after param, got %q", url)
 	}
 }
 

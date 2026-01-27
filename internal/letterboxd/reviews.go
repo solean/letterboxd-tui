@@ -14,11 +14,17 @@ type Review struct {
 	Link   string
 }
 
-func (c *Client) PopularReviews(slug string) ([]Review, error) {
+func (c *Client) PopularReviews(slug string, page int) ([]Review, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("missing slug")
 	}
+	if page < 1 {
+		page = 1
+	}
 	url := fmt.Sprintf("%s/ajax/film/%s/popular-reviews/", BaseURL, slug)
+	if page > 1 {
+		url = fmt.Sprintf("%s/ajax/film/%s/popular-reviews/page/%d/", BaseURL, slug, page)
+	}
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, err
@@ -26,11 +32,18 @@ func (c *Client) PopularReviews(slug string) ([]Review, error) {
 	return parseReviews(doc)
 }
 
-func (c *Client) FriendReviews(slug string) ([]Review, error) {
+func (c *Client) FriendReviews(slug string, page int) ([]Review, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("missing slug")
 	}
-	url := fmt.Sprintf("%s/csi/film/%s/friend-reviews/?esiAllowUser=true", BaseURL, slug)
+	if page < 1 {
+		page = 1
+	}
+	url := fmt.Sprintf("%s/csi/film/%s/friend-reviews/", BaseURL, slug)
+	if page > 1 {
+		url = fmt.Sprintf("%s/csi/film/%s/friend-reviews/page/%d/", BaseURL, slug, page)
+	}
+	url += "?esiAllowUser=true"
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, err

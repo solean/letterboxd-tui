@@ -7,7 +7,7 @@ import (
 
 func TestParseActivity(t *testing.T) {
 	html := `
-	<section class="activity-row -new">
+	<section class="activity-row -new" data-activity-id="999">
 		<div class="activity-summary">
 			<a class="name" href="/jane/">Jane</a>
 			<span>watched</span>
@@ -25,6 +25,9 @@ func TestParseActivity(t *testing.T) {
 		t.Fatalf("expected 1 item, got %d", len(items))
 	}
 	item := items[0]
+	if item.ID != "999" {
+		t.Fatalf("unexpected id: %q", item.ID)
+	}
 	if item.Actor != "Jane" || item.Title != "Inception" {
 		t.Fatalf("unexpected item: %+v", item)
 	}
