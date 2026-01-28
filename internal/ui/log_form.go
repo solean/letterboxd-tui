@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 
-	"letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
 
 type logForm struct {

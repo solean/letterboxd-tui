@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

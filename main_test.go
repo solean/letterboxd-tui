@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"letterboxd-tui/internal/config"
+	"github.com/solean/letterboxd-tui/internal/config"
 )
 
 func TestResolveStartupFromEnv(t *testing.T) {

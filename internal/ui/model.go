@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
 
 type tab int

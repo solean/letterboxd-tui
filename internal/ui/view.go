@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
 
 func (m Model) View() string {

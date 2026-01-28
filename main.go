@@ -8,20 +8,39 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/term"
 
-	"letterboxd-tui/internal/config"
-	"letterboxd-tui/internal/letterboxd"
-	"letterboxd-tui/internal/ui"
+	"github.com/solean/letterboxd-tui/internal/config"
+	"github.com/solean/letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/ui"
+	"github.com/solean/letterboxd-tui/internal/version"
 )
 
 func main() {
 	var userFlag string
 	var setupFlag bool
 	var noCookieFlag bool
+	var versionFlag bool
 	flag.StringVar(&userFlag, "user", "", "Letterboxd username")
 	flag.BoolVar(&setupFlag, "setup", false, "Run first-time setup")
 	flag.BoolVar(&noCookieFlag, "no-cookie", false, "Run without a stored cookie")
+	flag.BoolVar(&versionFlag, "version", false, "Print version and exit")
+	interactive := isInteractiveTTY()
+	if !interactive && wantsHelp(os.Args[1:]) {
+		flag.Usage()
+		return
+	}
 	flag.Parse()
+
+	if versionFlag {
+		fmt.Printf("letterboxd-tui %s\n", version.String())
+		return
+	}
+	if !interactive {
+		fmt.Fprintln(os.Stderr, "This app requires a TTY; run in a terminal.")
+		flag.Usage()
+		os.Exit(2)
+	}
 
 	state, err := resolveStartup(strings.TrimSpace(userFlag))
 	if err != nil {
@@ -140,4 +159,22 @@ func cookieNeedsPrompt(cookie string) bool {
 		return true
 	}
 	return !strings.Contains(cookie, "com.xk72.webparts.csrf=")
+}
+
+func isInteractiveTTY() bool {
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
+		return false
+	}
+	termEnv := strings.ToLower(strings.TrimSpace(os.Getenv("TERM")))
+	return termEnv != "" && termEnv != "dumb"
+}
+
+func wantsHelp(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "-h", "-help", "--help":
+			return true
+		}
+	}
+	return false
 }

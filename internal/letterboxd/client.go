@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/solean/letterboxd-tui/internal/version"
 )
 
 type Client struct {
@@ -144,7 +145,7 @@ func (c *Client) fetchDocumentWithHeaders(url string, headers map[string]string)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "letterboxd-tui/0.1")
+	req.Header.Set("User-Agent", version.UserAgent())
 	if c.Cookie != "" {
 		req.Header.Set("Cookie", c.Cookie)
 	}
