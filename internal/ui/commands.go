@@ -126,7 +126,7 @@ func fetchSearchCmd(client *letterboxd.Client, query string) tea.Cmd {
 	}
 }
 
-func fetchReviewsCmd(client *letterboxd.Client, slug string, which string, page int) tea.Cmd {
+func fetchReviewsCmd(client *letterboxd.Client, slug, username string, which string, page int) tea.Cmd {
 	return func() tea.Msg {
 		var (
 			revs []letterboxd.Review
@@ -136,7 +136,7 @@ func fetchReviewsCmd(client *letterboxd.Client, slug string, which string, page 
 		case "popular":
 			revs, err = client.PopularReviews(slug, page)
 		case "friends":
-			revs, err = client.FriendReviews(slug, page)
+			revs, err = client.FriendReviews(slug, username, page)
 		default:
 			err = fmt.Errorf("unknown reviews kind")
 		}

@@ -61,6 +61,8 @@ func TestClientMethods(t *testing.T) {
 			return newHTTPResponse(http.StatusOK, userFilmHTML, nil), nil
 		case "/film/inception/reviews/by/activity/page/1/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil
+		case "/jane/friends/film/inception/reviews/by/activity/":
+			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil
 		case "/csi/film/inception/friend-reviews/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML, nil), nil
 		default:
@@ -96,7 +98,7 @@ func TestClientMethods(t *testing.T) {
 	if _, err := client.PopularReviews("inception", 1); err != nil {
 		t.Fatalf("PopularReviews error: %v", err)
 	}
-	if _, err := client.FriendReviews("inception", 1); err != nil {
+	if _, err := client.FriendReviews("inception", "jane", 1); err != nil {
 		t.Fatalf("FriendReviews error: %v", err)
 	}
 }

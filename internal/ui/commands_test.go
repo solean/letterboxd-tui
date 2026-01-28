@@ -58,6 +58,8 @@ func TestFetchCommands(t *testing.T) {
 			return newHTTPResponse(http.StatusOK, `{"lid":"lid123","id":123}`), nil
 		case "/film/inception/reviews/by/activity/page/1/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
+		case "/jane/friends/film/inception/reviews/by/activity/":
+			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
 		case "/csi/film/inception/friend-reviews/":
 			return newHTTPResponse(http.StatusOK, reviewsHTML), nil
 		default:
@@ -86,7 +88,7 @@ func TestFetchCommands(t *testing.T) {
 	if msg := fetchFilmCmd(client, letterboxd.BaseURL+"/film/inception/", "")(); msg.(filmMsg).err != nil {
 		t.Fatalf("unexpected film error")
 	}
-	if msg := fetchReviewsCmd(client, "inception", "popular", 1)(); msg.(reviewsMsg).err != nil {
+	if msg := fetchReviewsCmd(client, "inception", "jane", "popular", 1)(); msg.(reviewsMsg).err != nil {
 		t.Fatalf("unexpected reviews error")
 	}
 }
@@ -95,7 +97,7 @@ func TestFetchReviewsUnknownKind(t *testing.T) {
 	client := newStubClient(func(req *http.Request) (*http.Response, error) {
 		return newHTTPResponse(http.StatusOK, ""), nil
 	})
-	msg := fetchReviewsCmd(client, "slug", "nope", 1)().(reviewsMsg)
+	msg := fetchReviewsCmd(client, "slug", "jane", "nope", 1)().(reviewsMsg)
 	if msg.err == nil {
 		t.Fatalf("expected error for unknown kind")
 	}
