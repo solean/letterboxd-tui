@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
 
 func TestNewLogForm(t *testing.T) {

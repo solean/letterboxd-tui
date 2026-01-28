@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/solean/letterboxd-tui/internal/version"
 )
 
 type Client struct {
@@ -131,6 +132,12 @@ func (c *Client) fetchDocument(url string) (*goquery.Document, error) {
 }
 
 func (c *Client) fetchDocumentWithHeaders(url string, headers map[string]string) (*goquery.Document, error) {
+	if headers == nil {
+		headers = map[string]string{}
+	}
+	if _, ok := headers["User-Agent"]; !ok {
+		headers["User-Agent"] = version.UserAgent()
+	}
 	doc, _, err := c.fetchDocumentStatus(url, headers)
 	return doc, err
 }
