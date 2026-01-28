@@ -11,7 +11,7 @@ import (
 func (c *Client) SearchFilms(query string) ([]SearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, fmt.Errorf("missing query")
+		return nil, c.wrapDebug(fmt.Errorf("missing query"))
 	}
 	escaped := url.PathEscape(query)
 	endpoint := fmt.Sprintf("%s/s/search/films/%s/", BaseURL, escaped)

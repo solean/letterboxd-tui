@@ -27,11 +27,11 @@ type DiaryEntryRequest struct {
 
 func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 	if req.ViewingUID == "" {
-		return errors.New("missing viewing UID")
+		return c.wrapDebug(errors.New("missing viewing UID"))
 	}
 	csrf := cookieValue(c.Cookie, "com.xk72.webparts.csrf")
 	if csrf == "" {
-		return errors.New("missing csrf token in cookie")
+		return c.wrapDebug(errors.New("missing csrf token in cookie"))
 	}
 	values := url.Values{}
 	if req.JSONResponse {
@@ -71,7 +71,7 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 	reqURL := fmt.Sprintf("%s/s/save-diary-entry", BaseURL)
 	httpReq, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(values.Encode()))
 	if err != nil {
-		return err
+		return c.wrapDebug(err)
 	}
 	applyDefaultHeaders(httpReq)
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -87,7 +87,7 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		return err
+		return c.wrapDebug(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -96,9 +96,9 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 			snippet = strings.TrimSpace(string(data))
 		}
 		if snippet != "" {
-			return fmt.Errorf("save diary entry failed: status %d body=%q", resp.StatusCode, snippet)
+			return c.wrapDebug(fmt.Errorf("save diary entry failed: status %d body=%q", resp.StatusCode, snippet))
 		}
-		return fmt.Errorf("save diary entry failed: status %d", resp.StatusCode)
+		return c.wrapDebug(fmt.Errorf("save diary entry failed: status %d", resp.StatusCode))
 	}
 	return nil
 }
