@@ -16,7 +16,7 @@ type Review struct {
 
 func (c *Client) PopularReviews(slug string, page int) ([]Review, error) {
 	if slug == "" {
-		return nil, fmt.Errorf("missing slug")
+		return nil, c.wrapDebug(fmt.Errorf("missing slug"))
 	}
 	if page < 1 {
 		page = 1
@@ -31,7 +31,7 @@ func (c *Client) PopularReviews(slug string, page int) ([]Review, error) {
 
 func (c *Client) FriendReviews(slug string, page int) ([]Review, error) {
 	if slug == "" {
-		return nil, fmt.Errorf("missing slug")
+		return nil, c.wrapDebug(fmt.Errorf("missing slug"))
 	}
 	if page < 1 {
 		page = 1

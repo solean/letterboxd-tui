@@ -18,9 +18,11 @@ func main() {
 	var userFlag string
 	var setupFlag bool
 	var noCookieFlag bool
+	var debugFlag bool
 	flag.StringVar(&userFlag, "user", "", "Letterboxd username")
 	flag.BoolVar(&setupFlag, "setup", false, "Run first-time setup")
 	flag.BoolVar(&noCookieFlag, "no-cookie", false, "Run without a stored cookie")
+	flag.BoolVar(&debugFlag, "debug", false, "Show debug errors (stack traces, HTTP details)")
 	flag.Parse()
 
 	state, err := resolveStartup(strings.TrimSpace(userFlag))
@@ -81,6 +83,7 @@ func main() {
 
 	cookie := state.cookie
 	client := letterboxd.NewClient(nil, cookie)
+	client.Debug = debugFlag || envBool("LETTERBOXD_DEBUG")
 
 	m := ui.NewModel(state.username, client)
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -140,4 +143,14 @@ func cookieNeedsPrompt(cookie string) bool {
 		return true
 	}
 	return !strings.Contains(cookie, "com.xk72.webparts.csrf=")
+}
+
+func envBool(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch value {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }

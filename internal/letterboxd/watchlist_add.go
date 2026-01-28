@@ -30,11 +30,11 @@ func (c *Client) SetWatchlist(req WatchlistRequest, inWatchlist bool) error {
 	slug := strings.TrimSpace(req.FilmSlug)
 	filmID := strings.TrimSpace(req.FilmID)
 	if watchlistID == "" && slug == "" && filmID == "" {
-		return errors.New("missing film id")
+		return c.wrapDebug(errors.New("missing film id"))
 	}
 	csrf := cookieValue(c.Cookie, "com.xk72.webparts.csrf")
 	if csrf == "" {
-		return errors.New("missing csrf token in cookie")
+		return c.wrapDebug(errors.New("missing csrf token in cookie"))
 	}
 
 	var lastErr error
@@ -48,7 +48,7 @@ func (c *Client) SetWatchlist(req WatchlistRequest, inWatchlist bool) error {
 		if err == nil {
 			return nil
 		}
-		lastErr = err
+		lastErr = c.wrapDebug(err)
 	}
 
 	values := url.Values{}
@@ -66,9 +66,9 @@ func (c *Client) SetWatchlist(req WatchlistRequest, inWatchlist bool) error {
 		if err == nil {
 			return nil
 		}
-		lastErr = err
+		lastErr = c.wrapDebug(err)
 		if status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
-			return err
+			return c.wrapDebug(err)
 		}
 	}
 	if filmID != "" {
@@ -76,19 +76,19 @@ func (c *Client) SetWatchlist(req WatchlistRequest, inWatchlist bool) error {
 		if err == nil {
 			return nil
 		}
-		lastErr = err
+		lastErr = c.wrapDebug(err)
 	}
 	if lastErr != nil {
 		return lastErr
 	}
-	return errors.New("unable to update watchlist")
+	return c.wrapDebug(errors.New("unable to update watchlist"))
 }
 
 func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) error {
 	payload := fmt.Sprintf(`{"inWatchlist":%t}`, inWatchlist)
 	httpReq, err := http.NewRequest(http.MethodPatch, reqURL, strings.NewReader(payload))
 	if err != nil {
-		return err
+		return c.wrapDebug(err)
 	}
 	applyDefaultHeaders(httpReq)
 	httpReq.Header.Set("Content-Type", "application/json; charset=UTF-8")
@@ -104,7 +104,7 @@ func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) 
 
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		return err
+		return c.wrapDebug(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -113,9 +113,9 @@ func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) 
 			snippet = strings.TrimSpace(string(data))
 		}
 		if snippet != "" {
-			return fmt.Errorf("watchlist update failed: status %d body=%q", resp.StatusCode, snippet)
+			return c.wrapDebug(fmt.Errorf("watchlist update failed: status %d body=%q", resp.StatusCode, snippet))
 		}
-		return fmt.Errorf("watchlist update failed: status %d", resp.StatusCode)
+		return c.wrapDebug(fmt.Errorf("watchlist update failed: status %d", resp.StatusCode))
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) 
 func (c *Client) postWatchlist(reqURL string, values url.Values, referer string) (int, error) {
 	httpReq, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(values.Encode()))
 	if err != nil {
-		return 0, err
+		return 0, c.wrapDebug(err)
 	}
 	applyDefaultHeaders(httpReq)
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -139,7 +139,7 @@ func (c *Client) postWatchlist(reqURL string, values url.Values, referer string)
 
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		return 0, err
+		return 0, c.wrapDebug(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -148,9 +148,9 @@ func (c *Client) postWatchlist(reqURL string, values url.Values, referer string)
 			snippet = strings.TrimSpace(string(data))
 		}
 		if snippet != "" {
-			return resp.StatusCode, fmt.Errorf("add to watchlist failed: status %d body=%q", resp.StatusCode, snippet)
+			return resp.StatusCode, c.wrapDebug(fmt.Errorf("add to watchlist failed: status %d body=%q", resp.StatusCode, snippet))
 		}
-		return resp.StatusCode, fmt.Errorf("add to watchlist failed: status %d", resp.StatusCode)
+		return resp.StatusCode, c.wrapDebug(fmt.Errorf("add to watchlist failed: status %d", resp.StatusCode))
 	}
 	return resp.StatusCode, nil
 }
