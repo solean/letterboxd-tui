@@ -567,7 +567,7 @@ func (m *Model) maybeLoadMoreReviewsCmd() tea.Cmd {
 		}
 		m.popReviewsLoadingMore = true
 		m.refreshModalViewport()
-		return fetchReviewsCmd(m.client, m.film.Slug, "popular", page)
+		return fetchReviewsCmd(m.client, m.film.Slug, m.username, "popular", page)
 	case "friends":
 		if m.friendReviewsLoadingMore || m.friendReviewsDone || m.friendReviewsMoreErr != nil {
 			return nil
@@ -581,7 +581,7 @@ func (m *Model) maybeLoadMoreReviewsCmd() tea.Cmd {
 		}
 		m.friendReviewsLoadingMore = true
 		m.refreshModalViewport()
-		return fetchReviewsCmd(m.client, m.film.Slug, "friends", page)
+		return fetchReviewsCmd(m.client, m.film.Slug, m.username, "friends", page)
 	}
 	return nil
 }

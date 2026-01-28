@@ -356,9 +356,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.refreshModalViewport()
 		if ev.film.Slug != "" {
-			cmds := []tea.Cmd{fetchReviewsCmd(m.client, ev.film.Slug, "popular", 1)}
+			cmds := []tea.Cmd{fetchReviewsCmd(m.client, ev.film.Slug, m.username, "popular", 1)}
 			if m.hasCookie() {
-				cmds = append(cmds, fetchReviewsCmd(m.client, ev.film.Slug, "friends", 1))
+				cmds = append(cmds, fetchReviewsCmd(m.client, ev.film.Slug, m.username, "friends", 1))
 			}
 			return m, tea.Batch(cmds...)
 		}
