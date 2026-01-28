@@ -2,3 +2,5 @@ cookie.txt
 todo.txt
 
 .gocache/
+.DS_Store
+
