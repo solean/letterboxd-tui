@@ -73,6 +73,7 @@ type Model struct {
 	loading                  bool
 	modalLoading             bool
 	searchLoading            bool
+	profileList              listState
 	diaryList                listState
 	watchList                listState
 	actList                  listState
@@ -110,6 +111,11 @@ type Model struct {
 	pendingGAt               time.Time
 }
 
+type profileSelectionEntry struct {
+	line    int
+	filmURL string
+}
+
 func NewModel(username string, client *letterboxd.Client) Model {
 	searchInput := textinput.New()
 	searchInput.Placeholder = "Search films"
@@ -131,6 +137,52 @@ func NewModel(username string, client *letterboxd.Client) Model {
 	}
 }
 
+func profileSelectionEntries(profile letterboxd.Profile) []profileSelectionEntry {
+	entries := make([]profileSelectionEntry, 0, len(profile.Favorites)+len(profile.Recent))
+	line := 0
+	line++
+	if len(profile.Stats) > 0 {
+		line += 2 + len(profile.Stats)
+	}
+	if len(profile.Favorites) > 0 {
+		line += 2
+		for _, fav := range profile.Favorites {
+			if fav.FilmURL != "" {
+				entries = append(entries, profileSelectionEntry{line: line, filmURL: fav.FilmURL})
+			}
+			line++
+		}
+	}
+	if len(profile.Recent) > 0 {
+		line += 2
+		for _, recent := range profile.Recent {
+			if recent.FilmURL != "" {
+				entries = append(entries, profileSelectionEntry{line: line, filmURL: recent.FilmURL})
+			}
+			line++
+		}
+	}
+	return entries
+}
+
+func profileLineCount(profile letterboxd.Profile) int {
+	lines := 1
+	if len(profile.Stats) > 0 {
+		lines += 2 + len(profile.Stats)
+	}
+	if len(profile.Favorites) > 0 {
+		lines += 2 + len(profile.Favorites)
+	}
+	if len(profile.Recent) > 0 {
+		lines += 2 + len(profile.Recent)
+	}
+	return lines
+}
+
+func (m Model) profileSelectableCount() int {
+	return len(profileSelectionEntries(m.profile))
+}
+
 func (m Model) hasCookie() bool {
 	if m.client == nil {
 		return false
@@ -140,6 +192,12 @@ func (m Model) hasCookie() bool {
 
 func (m *Model) moveSelection(delta int) {
 	switch m.activeTab {
+	case tabProfile:
+		count := m.profileSelectableCount()
+		if count == 0 {
+			return
+		}
+		m.profileList.selected = clamp(m.profileList.selected+delta, 0, count-1)
 	case tabDiary:
 		if len(m.diary) == 0 {
 			return
@@ -176,6 +234,8 @@ func (m *Model) resetTabPosition() {
 	m.searchInput.Blur()
 	m.searchFocusInput = false
 	switch m.activeTab {
+	case tabProfile:
+		m.profileList.selected = 0
 	case tabDiary:
 		m.diaryList.selected = 0
 	case tabWatchlist:
@@ -197,6 +257,12 @@ func (m *Model) resetTabPosition() {
 func (m *Model) pageSelection(dir int) {
 	step := max(1, m.viewport.Height-1)
 	switch m.activeTab {
+	case tabProfile:
+		count := m.profileSelectableCount()
+		if count == 0 {
+			return
+		}
+		m.profileList.selected = clamp(m.profileList.selected+dir*step, 0, count-1)
 	case tabDiary:
 		if len(m.diary) == 0 {
 			return
@@ -228,6 +294,14 @@ func (m *Model) pageSelection(dir int) {
 func (m *Model) syncViewportToSelection() {
 	var total, selected int
 	switch m.activeTab {
+	case tabProfile:
+		entries := profileSelectionEntries(m.profile)
+		if len(entries) == 0 {
+			return
+		}
+		selected = clamp(m.profileList.selected, 0, len(entries)-1)
+		total = profileLineCount(m.profile)
+		selected = entries[selected].line
 	case tabDiary:
 		total = len(m.diary)
 		selected = m.diaryList.selected
@@ -272,7 +346,12 @@ func (m *Model) jumpToTop() {
 	}
 	switch m.activeTab {
 	case tabProfile:
-		m.viewport.GotoTop()
+		if m.profileSelectableCount() == 0 {
+			m.viewport.GotoTop()
+			return
+		}
+		m.profileList.selected = 0
+		m.syncViewportToSelection()
 	case tabDiary:
 		if len(m.diary) == 0 {
 			return
@@ -315,7 +394,13 @@ func (m *Model) jumpToBottom() {
 	}
 	switch m.activeTab {
 	case tabProfile:
-		m.viewport.GotoBottom()
+		count := m.profileSelectableCount()
+		if count == 0 {
+			m.viewport.GotoBottom()
+			return
+		}
+		m.profileList.selected = count - 1
+		m.syncViewportToSelection()
 	case tabDiary:
 		if len(m.diary) == 0 {
 			return
@@ -620,6 +705,13 @@ func (m Model) openSelectedProfile() Model {
 func (m Model) openSelectedFilm() Model {
 	var filmURL string
 	switch m.activeTab {
+	case tabProfile:
+		entries := profileSelectionEntries(m.profile)
+		if len(entries) == 0 {
+			return m
+		}
+		selected := clamp(m.profileList.selected, 0, len(entries)-1)
+		filmURL = entries[selected].filmURL
 	case tabDiary:
 		if len(m.diary) == 0 {
 			return m

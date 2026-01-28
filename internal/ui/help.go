@@ -103,7 +103,14 @@ func (m Model) helpMap() helpKeyMap {
 		switchTabs := tabHelp("switch tab")
 		switch m.activeTab {
 		case tabProfile:
-			short := []key.Binding{navScroll, page}
+			nav := navScroll
+			if m.profileSelectableCount() > 0 {
+				nav = navMove
+			}
+			short := []key.Binding{nav, page}
+			if m.profileSelectableCount() > 0 {
+				short = append(short, helpBinding(keys.Select, "enter", "view film"))
+			}
 			if len(m.profileStack) > 0 {
 				short = append(short, keys.Back)
 			}

@@ -17,7 +17,7 @@ func TestParseProfile(t *testing.T) {
 		</div>
 	</div>
 	<section class="timeline">
-		<div class="activity-summary">Jane watched Inception</div>
+		<div class="activity-summary">Jane watched <a href="/film/inception/" class="target">Inception</a></div>
 		<div class="activity-summary">Jane liked a list</div>
 	</section>`
 	doc := docFromHTML(t, html)
@@ -33,5 +33,8 @@ func TestParseProfile(t *testing.T) {
 	}
 	if len(profile.Recent) != 1 {
 		t.Fatalf("unexpected recent: %+v", profile.Recent)
+	}
+	if profile.Recent[0].FilmURL != BaseURL+"/film/inception/" {
+		t.Fatalf("unexpected recent film url: %q", profile.Recent[0].FilmURL)
 	}
 }

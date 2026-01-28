@@ -161,7 +161,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.maybeLoadMoreReviewsCmd()
 				}
 			} else if m.activeTab == tabProfile {
-				m.viewport.LineDown(1)
+				if m.profileSelectableCount() == 0 {
+					m.viewport.LineDown(1)
+				} else {
+					m.moveSelection(1)
+					m.syncViewportToSelection()
+				}
 			} else {
 				m.moveSelection(1)
 				m.syncViewportToSelection()
@@ -171,7 +176,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.modalOpen() {
 				m.modalVP.LineUp(1)
 			} else if m.activeTab == tabProfile {
-				m.viewport.LineUp(1)
+				if m.profileSelectableCount() == 0 {
+					m.viewport.LineUp(1)
+				} else {
+					m.moveSelection(-1)
+					m.syncViewportToSelection()
+				}
 			} else {
 				m.moveSelection(-1)
 				m.syncViewportToSelection()
@@ -184,7 +194,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.maybeLoadMoreReviewsCmd()
 				}
 			} else if m.activeTab == tabProfile {
-				m.viewport.ViewDown()
+				if m.profileSelectableCount() == 0 {
+					m.viewport.ViewDown()
+				} else {
+					m.pageSelection(1)
+					m.syncViewportToSelection()
+				}
 			} else {
 				m.pageSelection(1)
 				m.syncViewportToSelection()
@@ -194,7 +209,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.modalOpen() {
 				m.modalVP.ViewUp()
 			} else if m.activeTab == tabProfile {
-				m.viewport.ViewUp()
+				if m.profileSelectableCount() == 0 {
+					m.viewport.ViewUp()
+				} else {
+					m.pageSelection(-1)
+					m.syncViewportToSelection()
+				}
 			} else {
 				m.pageSelection(-1)
 				m.syncViewportToSelection()
@@ -217,7 +237,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
 				return m, fetchProfileModalCmd(m.client, m.modalUser)
-			} else if m.activeTab == tabDiary || m.activeTab == tabWatchlist || m.activeTab == tabActivity {
+			} else if m.activeTab == tabProfile || m.activeTab == tabDiary || m.activeTab == tabWatchlist || m.activeTab == tabActivity {
 				m = m.openSelectedFilm()
 				if m.activeTab == tabFilm {
 					return m, fetchFilmCmd(m.client, m.film.URL, m.username)
@@ -298,6 +318,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.profile = ev.profile
 			m.profileErr = ev.err
 			m.loading = false
+			m.profileList.selected = 0
 		}
 	case diaryMsg:
 		if ev.page <= 1 {
@@ -461,7 +482,7 @@ func (m *Model) refreshModalViewport() {
 	m.modalVP.Height = bodyHeight
 
 	if m.profileModal {
-		content := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme)
+		content := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, -1, innerWidth, theme)
 		m.modalVP.SetContent(content)
 		return
 	}
