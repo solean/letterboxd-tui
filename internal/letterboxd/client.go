@@ -14,6 +14,7 @@ import (
 type Client struct {
 	HTTP   *http.Client
 	Cookie string
+	Debug  bool
 }
 
 const defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -32,9 +33,10 @@ func (c *Client) Profile(username string) (Profile, error) {
 	url := fmt.Sprintf("%s/%s/", BaseURL, username)
 	doc, err := c.fetchDocument(url)
 	if err != nil {
-		return Profile{}, err
+		return Profile{}, c.wrapDebug(err)
 	}
-	return parseProfile(doc)
+	profile, err := parseProfile(doc)
+	return profile, c.wrapDebug(err)
 }
 
 func (c *Client) Diary(username string, page int) ([]DiaryEntry, error) {
@@ -44,9 +46,10 @@ func (c *Client) Diary(username string, page int) ([]DiaryEntry, error) {
 	}
 	doc, err := c.fetchDocument(url)
 	if err != nil {
-		return nil, err
+		return nil, c.wrapDebug(err)
 	}
-	return parseDiary(doc)
+	entries, err := parseDiary(doc)
+	return entries, c.wrapDebug(err)
 }
 
 func (c *Client) Watchlist(username string, page int) ([]WatchlistItem, error) {
@@ -56,19 +59,20 @@ func (c *Client) Watchlist(username string, page int) ([]WatchlistItem, error) {
 	}
 	doc, err := c.fetchDocument(url)
 	if err != nil {
-		return nil, err
+		return nil, c.wrapDebug(err)
 	}
-	return parseWatchlist(doc)
+	items, err := parseWatchlist(doc)
+	return items, c.wrapDebug(err)
 }
 
 func (c *Client) Film(filmURL, username string) (Film, error) {
 	doc, err := c.fetchDocument(filmURL)
 	if err != nil {
-		return Film{}, err
+		return Film{}, c.wrapDebug(err)
 	}
 	film, err := parseFilm(doc, filmURL)
 	if err != nil {
-		return film, err
+		return film, c.wrapDebug(err)
 	}
 	if film.Slug != "" {
 		if meta, err := c.filmJSON(film.Slug); err == nil {
@@ -106,64 +110,36 @@ func (c *Client) Activity(username, after string) ([]ActivityItem, error) {
 	url := activityURL(username, after)
 	doc, err := c.fetchDocumentWithHeaders(url, activityHeaders(username, false))
 	if err != nil {
-		return nil, err
+		return nil, c.wrapDebug(err)
 	}
-	return parseActivity(doc)
+	items, err := parseActivity(doc)
+	return items, c.wrapDebug(err)
 }
 
 func (c *Client) FollowingActivity(username, after string) ([]ActivityItem, error) {
 	url := followingActivityURL(username, c.Cookie, after)
 	doc, err := c.fetchDocumentWithHeaders(url, activityHeaders(username, true))
 	if err != nil {
-		return nil, err
+		return nil, c.wrapDebug(err)
 	}
-	return parseActivity(doc)
+	items, err := parseActivity(doc)
+	return items, c.wrapDebug(err)
 }
 
 func (c *Client) fetchDocument(url string) (*goquery.Document, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	applyDefaultHeaders(req)
-	if c.Cookie != "" {
-		req.Header.Set("Cookie", c.Cookie)
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, url)
-	}
-	return goquery.NewDocumentFromReader(resp.Body)
+	doc, _, err := c.fetchDocumentStatus(url, nil)
+	return doc, err
 }
 
 func (c *Client) fetchDocumentWithHeaders(url string, headers map[string]string) (*goquery.Document, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
+	if headers == nil {
+		headers = map[string]string{}
 	}
-	req.Header.Set("User-Agent", version.UserAgent())
-	if c.Cookie != "" {
-		req.Header.Set("Cookie", c.Cookie)
+	if _, ok := headers["User-Agent"]; !ok {
+		headers["User-Agent"] = version.UserAgent()
 	}
-	for key, val := range headers {
-		if key == "" || val == "" {
-			continue
-		}
-		req.Header.Set(key, val)
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, url)
-	}
-	return goquery.NewDocumentFromReader(resp.Body)
+	doc, _, err := c.fetchDocumentStatus(url, headers)
+	return doc, err
 }
 
 func activityHeaders(username string, following bool) map[string]string {
@@ -178,28 +154,67 @@ func activityHeaders(username string, following bool) map[string]string {
 }
 
 func (c *Client) fetchDocumentAllowStatus(url string) (*goquery.Document, int, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, 0, err
-	}
-	applyDefaultHeaders(req)
-	if c.Cookie != "" {
-		req.Header.Set("Cookie", c.Cookie)
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, resp.StatusCode, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, url)
-	}
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	return doc, resp.StatusCode, err
+	return c.fetchDocumentStatus(url, nil)
 }
 
 func applyDefaultHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", defaultUserAgent)
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+}
+
+func (c *Client) fetchDocumentStatus(url string, headers map[string]string) (*goquery.Document, int, error) {
+	const maxAttempts = 2
+	for attempt := 0; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, 0, c.wrapDebug(err)
+		}
+		applyDefaultHeaders(req)
+		if c.Cookie != "" {
+			req.Header.Set("Cookie", c.Cookie)
+		}
+		for key, val := range headers {
+			if key == "" || val == "" {
+				continue
+			}
+			req.Header.Set(key, val)
+		}
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			return nil, 0, c.wrapDebug(err)
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			doc, err := goquery.NewDocumentFromReader(resp.Body)
+			resp.Body.Close()
+			return doc, resp.StatusCode, c.wrapDebug(err)
+		}
+		body := readBodySnippet(resp.Body)
+		resp.Body.Close()
+		if isCloudflareChallenge(resp.StatusCode, body) && attempt < maxAttempts {
+			time.Sleep(cloudflareBackoff(attempt))
+			continue
+		}
+		return nil, resp.StatusCode, c.httpStatusErrorWithBody(req, resp, body)
+	}
+	return nil, 0, c.wrapDebug(fmt.Errorf("unexpected request failure for %s", url))
+}
+
+func isCloudflareChallenge(status int, body string) bool {
+	if status != http.StatusForbidden && status != http.StatusTooManyRequests && status != http.StatusServiceUnavailable {
+		return false
+	}
+	lower := strings.ToLower(body)
+	return strings.Contains(lower, "just a moment") ||
+		strings.Contains(lower, "cf-chl") ||
+		strings.Contains(lower, "attention required") ||
+		strings.Contains(lower, "cloudflare")
+}
+
+func cloudflareBackoff(attempt int) time.Duration {
+	base := 300 * time.Millisecond
+	if attempt <= 0 {
+		return base
+	}
+	return base * time.Duration(1<<attempt)
 }

@@ -21,10 +21,12 @@ func main() {
 	var setupFlag bool
 	var noCookieFlag bool
 	var versionFlag bool
+	var debugFlag bool
 	flag.StringVar(&userFlag, "user", "", "Letterboxd username")
 	flag.BoolVar(&setupFlag, "setup", false, "Run first-time setup")
 	flag.BoolVar(&noCookieFlag, "no-cookie", false, "Run without a stored cookie")
 	flag.BoolVar(&versionFlag, "version", false, "Print version and exit")
+	flag.BoolVar(&debugFlag, "debug", false, "Show debug errors (stack traces, HTTP details)")
 	interactive := isInteractiveTTY()
 	if !interactive && wantsHelp(os.Args[1:]) {
 		flag.Usage()
@@ -100,6 +102,7 @@ func main() {
 
 	cookie := state.cookie
 	client := letterboxd.NewClient(nil, cookie)
+	client.Debug = debugFlag || envBool("LETTERBOXD_DEBUG")
 
 	m := ui.NewModel(state.username, client)
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -177,4 +180,14 @@ func wantsHelp(args []string) bool {
 		}
 	}
 	return false
+}
+
+func envBool(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch value {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
