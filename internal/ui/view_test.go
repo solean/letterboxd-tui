@@ -112,9 +112,9 @@ func TestRenderProfileContent(t *testing.T) {
 	profile := letterboxd.Profile{
 		Stats:     []letterboxd.ProfileStat{{Label: "Films", Value: "42"}},
 		Favorites: []letterboxd.FavoriteFilm{{Title: "Inception", Year: "2010"}},
-		Recent:    []string{"jane watched Inception"},
+		Recent:    []letterboxd.ProfileRecent{{Summary: "jane watched Inception", FilmURL: letterboxd.BaseURL + "/film/inception/"}},
 	}
-	out := stripANSI(renderProfileContent(profile, nil, false, "jane", nil, theme))
+	out := stripANSI(renderProfileContent(profile, nil, false, "jane", nil, 0, 80, theme))
 	if !strings.Contains(out, "Films") || !strings.Contains(out, "Inception") {
 		t.Fatalf("unexpected profile output: %q", out)
 	}

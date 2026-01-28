@@ -54,7 +54,22 @@ func parseProfile(doc *goquery.Document) (Profile, error) {
 		if !strings.Contains(strings.ToLower(line), "watched") {
 			return
 		}
-		profile.Recent = append(profile.Recent, line)
+		var filmURL string
+		summary.Find("a").EachWithBreak(func(_ int, link *goquery.Selection) bool {
+			href, _ := link.Attr("href")
+			if !strings.Contains(href, "/film/") {
+				return true
+			}
+			filmURL = strings.TrimSpace(href)
+			return false
+		})
+		if filmURL != "" && strings.HasPrefix(filmURL, "/") {
+			filmURL = BaseURL + filmURL
+		}
+		profile.Recent = append(profile.Recent, ProfileRecent{
+			Summary: line,
+			FilmURL: filmURL,
+		})
 	})
 	return profile, nil
 }

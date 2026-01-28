@@ -134,7 +134,11 @@ func prevTab(m Model, current tab) tab {
 	return tabProfile
 }
 func renderProfile(m Model, theme themeStyles) string {
-	return renderProfileContent(m.profile, m.profileErr, m.loading, m.profileUser, m.profileStack, theme)
+	selected := -1
+	if count := m.profileSelectableCount(); count > 0 {
+		selected = clamp(m.profileList.selected, 0, count-1)
+	}
+	return renderProfileContent(m.profile, m.profileErr, m.loading, m.profileUser, m.profileStack, selected, m.width, theme)
 }
 
 func renderDiary(m Model, theme themeStyles) string {
@@ -198,14 +202,17 @@ func renderWatchlist(m Model, theme themeStyles) string {
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
 
-func renderProfileContent(profile letterboxd.Profile, err error, loading bool, profileUser string, stack []string, theme themeStyles) string {
+func renderProfileContent(profile letterboxd.Profile, err error, loading bool, profileUser string, stack []string, selected int, width int, theme themeStyles) string {
 	if err != nil {
 		return theme.dim.Render("Error: " + err.Error())
 	}
 	if loading && len(profile.Stats) == 0 && len(profile.Favorites) == 0 {
 		return theme.dim.Render("Loading profile…")
 	}
+	selectionEnabled := selected >= 0
+	width = max(40, width-2)
 	var rows []string
+	selectableIndex := 0
 	rows = append(rows, theme.subtle.Render(renderBreadcrumbs(stack, profileUser, theme.user)))
 	if len(profile.Stats) > 0 {
 		rows = append(rows, "", theme.subtle.Render("Stats"))
@@ -222,14 +229,29 @@ func renderProfileContent(profile letterboxd.Profile, err error, loading bool, p
 			if fav.Year != "" {
 				title = fmt.Sprintf("%s (%s)", fav.Title, fav.Year)
 			}
-			rows = append(rows, theme.item.Render(fmt.Sprintf("%s %s", prefix, title)))
+			line := fmt.Sprintf("%s %s", prefix, title)
+			if selectionEnabled && fav.FilmURL != "" {
+				rows = append(rows, renderSelectableLine(line, selectableIndex == selected, width, theme))
+				selectableIndex++
+			} else {
+				rows = append(rows, theme.item.Render(line))
+			}
 		}
 	}
 	if len(profile.Recent) > 0 {
 		rows = append(rows, "", theme.subtle.Render("Recently Watched"))
-		for _, line := range profile.Recent {
+		for _, recent := range profile.Recent {
+			line := recent.Summary
+			if line == "" {
+				line = recent.FilmURL
+			}
 			line = strings.Replace(line, profileUser, theme.user.Render(profileUser), 1)
-			rows = append(rows, theme.item.Render(line))
+			if selectionEnabled && recent.FilmURL != "" {
+				rows = append(rows, renderSelectableLine(line, selectableIndex == selected, width, theme))
+				selectableIndex++
+			} else {
+				rows = append(rows, theme.item.Render(line))
+			}
 		}
 	}
 	if len(rows) == 0 {
@@ -384,11 +406,11 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 }
 
 func renderProfileModal(base string, m Model, theme themeStyles) string {
-	if m.modalVP.View() == "" && renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme) == "" {
-		return base
-	}
 	width, height := modalDimensions(m.width, m.height)
 	innerWidth := width - 4
+	if m.modalVP.View() == "" && renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, -1, innerWidth, theme) == "" {
+		return base
+	}
 	innerHeight := height - 2
 	legend := renderHelp(m, theme, innerWidth)
 	legendHeight := lipgloss.Height(legend)
@@ -399,7 +421,7 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 	vp.Height = bodyHeight
 	body := vp.View()
 	if body == "" {
-		vp.SetContent(renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, theme))
+		vp.SetContent(renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, -1, innerWidth, theme))
 		body = vp.View()
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)

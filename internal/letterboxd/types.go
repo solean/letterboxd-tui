@@ -14,7 +14,7 @@ type DiaryEntry struct {
 type Profile struct {
 	Stats     []ProfileStat
 	Favorites []FavoriteFilm
-	Recent    []string
+	Recent    []ProfileRecent
 }
 
 type ProfileStat struct {
@@ -27,6 +27,11 @@ type FavoriteFilm struct {
 	Title   string
 	FilmURL string
 	Year    string
+}
+
+type ProfileRecent struct {
+	Summary string
+	FilmURL string
 }
 
 type WatchlistItem struct {
