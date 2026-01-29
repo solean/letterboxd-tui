@@ -1,6 +1,8 @@
 package letterboxd
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -100,7 +102,108 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 		}
 		return c.wrapDebug(fmt.Errorf("save diary entry failed: status %d", resp.StatusCode))
 	}
+	if req.JSONResponse {
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			return c.wrapDebug(err)
+		}
+		if errMsg := diarySaveError(body); errMsg != "" {
+			return c.wrapDebug(fmt.Errorf("save diary entry failed: %s", errMsg))
+		}
+	}
 	return nil
+}
+
+func diarySaveError(body []byte) string {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || !json.Valid(trimmed) {
+		return ""
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(trimmed, &payload); err != nil {
+		return ""
+	}
+	if errMsg := extractJSONError(payload); errMsg != "" {
+		return errMsg
+	}
+	if success, ok := payload["success"].(bool); ok && !success {
+		if msg := extractJSONString(payload, "message"); msg != "" {
+			return msg
+		}
+		return "unknown error"
+	}
+	if result, ok := payload["result"].(bool); ok {
+		if !result {
+			if msg := extractJSONString(payload, "message"); msg != "" {
+				return msg
+			}
+			return "unknown error"
+		}
+		return ""
+	}
+	result := strings.ToLower(extractJSONString(payload, "result"))
+	if result != "" && result != "success" && result != "ok" && result != "true" {
+		if msg := extractJSONString(payload, "message"); msg != "" {
+			return msg
+		}
+		if result == "false" {
+			return "unknown error"
+		}
+		return result
+	}
+	return ""
+}
+
+func extractJSONError(payload map[string]interface{}) string {
+	if errVal, ok := payload["error"]; ok {
+		switch typed := errVal.(type) {
+		case string:
+			if trimmed := strings.TrimSpace(typed); trimmed != "" {
+				return trimmed
+			}
+		case bool:
+			if typed {
+				return "unknown error"
+			}
+		}
+	}
+	if errs := extractJSONStrings(payload["errors"]); len(errs) > 0 {
+		return strings.Join(errs, "; ")
+	}
+	return ""
+}
+
+func extractJSONString(payload map[string]interface{}, key string) string {
+	val, ok := payload[key]
+	if !ok {
+		return ""
+	}
+	switch typed := val.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	case float64, int, int64:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	default:
+		return ""
+	}
+}
+
+func extractJSONStrings(val interface{}) []string {
+	items, ok := val.([]interface{})
+	if !ok {
+		return nil
+	}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		if str, ok := item.(string); ok {
+			if trimmed := strings.TrimSpace(str); trimmed != "" {
+				values = append(values, trimmed)
+			}
+		}
+	}
+	return values
 }
 
 func clamp(v, lo, hi int) int {

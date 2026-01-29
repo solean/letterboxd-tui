@@ -787,6 +787,7 @@ func (m Model) startLogModal() Model {
 	}
 	form := newLogForm(m.film)
 	form.setSize(m.width)
+	form.focusField(logFieldRating)
 	m.logForm = form
 	m.logModal = true
 	return m
