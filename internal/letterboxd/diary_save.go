@@ -126,25 +126,46 @@ func diarySaveError(body []byte) string {
 	if errMsg := extractJSONError(payload); errMsg != "" {
 		return errMsg
 	}
-	result := strings.ToLower(extractJSONString(payload, "result"))
-	if result != "" && result != "success" && result != "ok" {
-		if msg := extractJSONString(payload, "message"); msg != "" {
-			return msg
-		}
-		return result
-	}
 	if success, ok := payload["success"].(bool); ok && !success {
 		if msg := extractJSONString(payload, "message"); msg != "" {
 			return msg
 		}
 		return "unknown error"
 	}
+	if result, ok := payload["result"].(bool); ok {
+		if !result {
+			if msg := extractJSONString(payload, "message"); msg != "" {
+				return msg
+			}
+			return "unknown error"
+		}
+		return ""
+	}
+	result := strings.ToLower(extractJSONString(payload, "result"))
+	if result != "" && result != "success" && result != "ok" && result != "true" {
+		if msg := extractJSONString(payload, "message"); msg != "" {
+			return msg
+		}
+		if result == "false" {
+			return "unknown error"
+		}
+		return result
+	}
 	return ""
 }
 
 func extractJSONError(payload map[string]interface{}) string {
-	if errMsg := extractJSONString(payload, "error"); errMsg != "" {
-		return errMsg
+	if errVal, ok := payload["error"]; ok {
+		switch typed := errVal.(type) {
+		case string:
+			if trimmed := strings.TrimSpace(typed); trimmed != "" {
+				return trimmed
+			}
+		case bool:
+			if typed {
+				return "unknown error"
+			}
+		}
 	}
 	if errs := extractJSONStrings(payload["errors"]); len(errs) > 0 {
 		return strings.Join(errs, "; ")
@@ -162,7 +183,7 @@ func extractJSONString(payload map[string]interface{}, key string) string {
 		return strings.TrimSpace(typed)
 	case fmt.Stringer:
 		return strings.TrimSpace(typed.String())
-	case float64, bool, int, int64:
+	case float64, int, int64:
 		return strings.TrimSpace(fmt.Sprint(typed))
 	default:
 		return ""
