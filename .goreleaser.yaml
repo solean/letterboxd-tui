@@ -1,0 +1,49 @@
+version: 2
+
+project_name: letterboxd
+
+builds:
+  - id: letterboxd
+    main: ./cmd/letterboxd
+    binary: letterboxd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/solean/letterboxd-tui/internal/version.Version={{.Version}}
+      - -X github.com/solean/letterboxd-tui/internal/version.Commit={{.Commit}}
+      - -X github.com/solean/letterboxd-tui/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    name_template: 'letterboxd_{{.Version}}_{{.Os}}_{{.Arch}}'
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  use: github
+
+homebrew_casks:
+  - name: letterboxd
+    description: "Terminal client for Letterboxd"
+    homepage: "https://github.com/solean/letterboxd-tui"
+    repository:
+      owner: solean
+      name: homebrew-letterboxd
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    binaries:
+      - letterboxd
+    url:
+      verified: github.com/solean/letterboxd-tui
