@@ -77,3 +77,17 @@ func TestSaveDiaryEntryStatusError(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
+
+func TestSaveDiaryEntryJSONError(t *testing.T) {
+	client := newTestClient(func(req *http.Request) (*http.Response, error) {
+		return newHTTPResponse(http.StatusOK, `{"error":"nope"}`, map[string]string{"Content-Type": "application/json"}), nil
+	})
+	req := DiaryEntryRequest{
+		ViewingUID:   "film:123",
+		WatchedDate:  "2024-01-01",
+		JSONResponse: true,
+	}
+	if err := client.SaveDiaryEntry(req); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Fatalf("expected json error, got %v", err)
+	}
+}
