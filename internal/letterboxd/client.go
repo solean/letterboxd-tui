@@ -1,20 +1,26 @@
 package letterboxd
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/solean/letterboxd-tui/internal/version"
+	"golang.org/x/net/http2"
 )
 
 type Client struct {
 	HTTP   *http.Client
 	Cookie string
 	Debug  bool
+
+	fallbackHTTP   *http.Client
+	forceHTTP2HTTP *http.Client
 }
 
 const defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -135,9 +141,6 @@ func (c *Client) fetchDocumentWithHeaders(url string, headers map[string]string)
 	if headers == nil {
 		headers = map[string]string{}
 	}
-	if _, ok := headers["User-Agent"]; !ok {
-		headers["User-Agent"] = version.UserAgent()
-	}
 	doc, _, err := c.fetchDocumentStatus(url, headers)
 	return doc, err
 }
@@ -158,13 +161,15 @@ func (c *Client) fetchDocumentAllowStatus(url string) (*goquery.Document, int, e
 }
 
 func applyDefaultHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", defaultUserAgent)
+	req.Header.Set("User-Agent", resolvedUserAgent())
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 }
 
 func (c *Client) fetchDocumentStatus(url string, headers map[string]string) (*goquery.Document, int, error) {
 	const maxAttempts = 2
+	useFallback := false
+	forceHTTP2 := false
 	for attempt := 0; attempt <= maxAttempts; attempt++ {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
@@ -180,8 +185,18 @@ func (c *Client) fetchDocumentStatus(url string, headers map[string]string) (*go
 			}
 			req.Header.Set(key, val)
 		}
-		resp, err := c.HTTP.Do(req)
+		client := c.HTTP
+		if forceHTTP2 {
+			client = c.forceHTTP2Client()
+		} else if useFallback {
+			client = c.fallbackClient()
+		}
+		resp, err := client.Do(req)
 		if err != nil {
+			if !forceHTTP2 && isHTTP2PrefaceError(err) {
+				forceHTTP2 = true
+				continue
+			}
 			return nil, 0, c.wrapDebug(err)
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -192,8 +207,15 @@ func (c *Client) fetchDocumentStatus(url string, headers map[string]string) (*go
 		body := readBodySnippet(resp.Body)
 		resp.Body.Close()
 		if isCloudflareChallenge(resp.StatusCode, body) && attempt < maxAttempts {
+			if !useFallback {
+				useFallback = true
+				continue
+			}
 			time.Sleep(cloudflareBackoff(attempt))
 			continue
+		}
+		if isCloudflareChallenge(resp.StatusCode, body) {
+			return nil, resp.StatusCode, c.cloudflareError(req, resp, body)
 		}
 		return nil, resp.StatusCode, c.httpStatusErrorWithBody(req, resp, body)
 	}
@@ -217,4 +239,85 @@ func cloudflareBackoff(attempt int) time.Duration {
 		return base
 	}
 	return base * time.Duration(1<<attempt)
+}
+
+func resolvedUserAgent() string {
+	if ua := strings.TrimSpace(os.Getenv("LETTERBOXD_USER_AGENT")); ua != "" {
+		return ua
+	}
+	appUA := version.UserAgent()
+	if appUA == "" {
+		return defaultUserAgent
+	}
+	return fmt.Sprintf("%s %s", defaultUserAgent, appUA)
+}
+
+func (c *Client) fallbackClient() *http.Client {
+	if c.fallbackHTTP != nil {
+		return c.fallbackHTTP
+	}
+	base := c.HTTP
+	if base == nil {
+		base = &http.Client{Timeout: 12 * time.Second}
+	}
+	transport := cloneTransport(base.Transport)
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	c.fallbackHTTP = &http.Client{
+		Timeout:       base.Timeout,
+		Transport:     transport,
+		CheckRedirect: base.CheckRedirect,
+		Jar:           base.Jar,
+	}
+	return c.fallbackHTTP
+}
+
+func (c *Client) forceHTTP2Client() *http.Client {
+	if c.forceHTTP2HTTP != nil {
+		return c.forceHTTP2HTTP
+	}
+	base := c.HTTP
+	if base == nil {
+		base = &http.Client{Timeout: 12 * time.Second}
+	}
+	transport := cloneTransport(base.Transport)
+	transport.ForceAttemptHTTP2 = true
+	if err := http2.ConfigureTransport(transport); err != nil {
+		// If configuration fails, still keep ForceAttemptHTTP2 enabled.
+	}
+	c.forceHTTP2HTTP = &http.Client{
+		Timeout:       base.Timeout,
+		Transport:     transport,
+		CheckRedirect: base.CheckRedirect,
+		Jar:           base.Jar,
+	}
+	return c.forceHTTP2HTTP
+}
+
+func cloneTransport(rt http.RoundTripper) *http.Transport {
+	if rt == nil {
+		return http.DefaultTransport.(*http.Transport).Clone()
+	}
+	if transport, ok := rt.(*http.Transport); ok {
+		return transport.Clone()
+	}
+	return http.DefaultTransport.(*http.Transport).Clone()
+}
+
+func (c *Client) cloudflareError(req *http.Request, resp *http.Response, body string) error {
+	hint := fmt.Sprintf("Cloudflare challenge detected (status %d). Refresh your Letterboxd cookie from a browser (include com.xk72.webparts.csrf and cf_clearance) and try again.", resp.StatusCode)
+	if !c.Debug {
+		return fmt.Errorf("%s", hint)
+	}
+	detail := c.httpStatusErrorWithBody(req, resp, body)
+	return fmt.Errorf("%s\n%w", hint, detail)
+}
+
+func isHTTP2PrefaceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "malformed HTTP response") ||
+		strings.Contains(msg, "HTTP/1.x transport connection broken")
 }
