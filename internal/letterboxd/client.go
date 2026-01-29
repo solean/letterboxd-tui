@@ -19,7 +19,7 @@ type Client struct {
 	Cookie string
 	Debug  bool
 
-	fallbackHTTP  *http.Client
+	fallbackHTTP   *http.Client
 	forceHTTP2HTTP *http.Client
 }
 
