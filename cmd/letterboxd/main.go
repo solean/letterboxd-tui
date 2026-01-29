@@ -12,6 +12,7 @@ import (
 
 	"github.com/solean/letterboxd-tui/internal/config"
 	"github.com/solean/letterboxd-tui/internal/letterboxd"
+	"github.com/solean/letterboxd-tui/internal/logging"
 	"github.com/solean/letterboxd-tui/internal/ui"
 	"github.com/solean/letterboxd-tui/internal/version"
 )
@@ -46,6 +47,7 @@ func main() {
 
 	state, err := resolveStartup(strings.TrimSpace(userFlag))
 	if err != nil {
+		logging.LogError("startup", err)
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -66,6 +68,7 @@ func main() {
 			ConfigPath: state.configPath,
 		})
 		if err != nil {
+			logging.LogError("onboarding", err)
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -91,6 +94,7 @@ func main() {
 	}
 	if state.configDirty {
 		if err := config.Save(state.config); err != nil {
+			logging.LogError("config save", err)
 			fmt.Fprintln(os.Stderr, "warning: unable to save config:", err)
 		}
 	}
@@ -107,6 +111,7 @@ func main() {
 	m := ui.NewModel(state.username, client)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
+		logging.LogError("bubbletea run", err)
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
