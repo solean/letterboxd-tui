@@ -26,6 +26,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logForm.setSize(m.width)
 		}
 		m.searchInput.Width = max(10, m.width-4)
+		m.cookieInput.Width = max(20, min(56, m.width-12))
 		m.refreshModalViewport()
 		cmd := m.maybeFillCmd()
 		if m.activeTab == tabFilm {
@@ -49,10 +50,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "popular":
 			if rm.page <= 1 {
 				m.popReviews = rm.reviews
-				m.popReviewsErr = rm.err
-				if rm.err != nil {
-					logging.LogError("reviews popular", rm.err)
-				}
+				m.popReviewsErr = m.logAndSanitize("reviews popular", rm.err)
 				m.popReviewsPage = max(1, rm.page)
 				m.popReviewsDone = rm.err == nil && len(rm.reviews) == 0
 				m.popReviewsLoadingMore = false
@@ -60,8 +58,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.popReviewsLoadingMore = false
 				if rm.err != nil {
-					logging.LogError("reviews popular more", rm.err)
-					m.popReviewsMoreErr = rm.err
+					m.popReviewsMoreErr = m.logAndSanitize("reviews popular more", rm.err)
 					m.refreshModalViewport()
 					return m, nil
 				}
@@ -77,10 +74,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "friends":
 			if rm.page <= 1 {
 				m.friendReviews = rm.reviews
-				m.friendReviewsErr = rm.err
-				if rm.err != nil {
-					logging.LogError("reviews friends", rm.err)
-				}
+				m.friendReviewsErr = m.logAndSanitize("reviews friends", rm.err)
 				m.friendReviewsPage = max(1, rm.page)
 				m.friendReviewsDone = rm.err == nil && len(rm.reviews) == 0
 				m.friendReviewsLoadingMore = false
@@ -88,8 +82,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.friendReviewsLoadingMore = false
 				if rm.err != nil {
-					logging.LogError("reviews friends more", rm.err)
-					m.friendReviewsMoreErr = rm.err
+					m.friendReviewsMoreErr = m.logAndSanitize("reviews friends more", rm.err)
 					m.refreshModalViewport()
 					return m, nil
 				}
@@ -107,6 +100,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshModalViewport()
 		return m, m.maybeLoadMoreReviewsCmd()
+	}
+
+	if m.cookieModal {
+		return m.updateCookieModal(msg)
 	}
 
 	if m.logModal {
@@ -323,28 +320,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case profileMsg:
 		if ev.modal {
 			m.modalProfile = ev.profile
-			m.modalProfileErr = ev.err
-			if ev.err != nil {
-				logging.LogError("profile modal fetch", ev.err)
-			}
+			m.modalProfileErr = m.logAndSanitize("profile modal fetch", ev.err)
 			m.modalLoading = false
 			m.refreshModalViewport()
 		} else {
 			m.profile = ev.profile
-			m.profileErr = ev.err
-			if ev.err != nil {
-				logging.LogError("profile fetch", ev.err)
-			}
+			m.profileErr = m.logAndSanitize("profile fetch", ev.err)
 			m.loading = false
 			m.profileList.selected = 0
 		}
 	case diaryMsg:
 		if ev.page <= 1 {
 			m.diary = ev.items
-			m.diaryErr = ev.err
-			if ev.err != nil {
-				logging.LogError("diary fetch", ev.err)
-			}
+			m.diaryErr = m.logAndSanitize("diary fetch", ev.err)
 			m.diaryPage = max(1, ev.page)
 			m.diaryDone = ev.err == nil && len(ev.items) == 0
 			m.diaryLoadingMore = false
@@ -353,8 +341,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.diaryLoadingMore = false
 			if ev.err != nil {
-				logging.LogError("diary fetch more", ev.err)
-				m.diaryMoreErr = ev.err
+				m.diaryMoreErr = m.logAndSanitize("diary fetch more", ev.err)
 				return m, nil
 			}
 			m.diaryMoreErr = nil
@@ -370,10 +357,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case watchlistMsg:
 		if ev.page <= 1 {
 			m.watchlist = ev.items
-			m.watchErr = ev.err
-			if ev.err != nil {
-				logging.LogError("watchlist fetch", ev.err)
-			}
+			m.watchErr = m.logAndSanitize("watchlist fetch", ev.err)
 			m.watchlistLoaded = true
 			m.watchPage = max(1, ev.page)
 			m.watchDone = ev.err == nil && len(ev.items) == 0
@@ -383,8 +367,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.watchLoadingMore = false
 			if ev.err != nil {
-				logging.LogError("watchlist fetch more", ev.err)
-				m.watchMoreErr = ev.err
+				m.watchMoreErr = m.logAndSanitize("watchlist fetch more", ev.err)
 				return m, nil
 			}
 			m.watchMoreErr = nil
@@ -399,10 +382,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.maybeFillCmd()
 	case filmMsg:
 		m.film = ev.film
-		m.filmErr = ev.err
-		if ev.err != nil {
-			logging.LogError("film fetch", ev.err)
-		}
+		m.filmErr = m.logAndSanitize("film fetch", ev.err)
 		m.loading = false
 		m.refreshModalViewport()
 		if ev.film.Slug != "" {
@@ -414,10 +394,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case searchMsg:
 		m.searchResults = ev.results
-		m.searchErr = ev.err
-		if ev.err != nil {
-			logging.LogError("search", ev.err)
-		}
+		m.searchErr = m.logAndSanitize("search", ev.err)
 		m.searchLoading = false
 		m.searchList.selected = 0
 		m.searchFocusInput = false
@@ -426,19 +403,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.after == "" {
 			if ev.tab == tabActivity {
 				m.activity = ev.items
-				m.activityErr = ev.err
-				if ev.err != nil {
-					logging.LogError("activity fetch", ev.err)
-				}
+				m.activityErr = m.logAndSanitize("activity fetch", ev.err)
 				m.activityDone = ev.err == nil && len(ev.items) == 0
 				m.activityLoadingMore = false
 				m.activityMoreErr = nil
 			} else {
 				m.following = ev.items
-				m.followErr = ev.err
-				if ev.err != nil {
-					logging.LogError("following activity fetch", ev.err)
-				}
+				m.followErr = m.logAndSanitize("following activity fetch", ev.err)
 				m.followDone = ev.err == nil && len(ev.items) == 0
 				m.followLoadingMore = false
 				m.followMoreErr = nil
@@ -449,8 +420,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.tab == tabActivity {
 			m.activityLoadingMore = false
 			if ev.err != nil {
-				logging.LogError("activity fetch more", ev.err)
-				m.activityMoreErr = ev.err
+				m.activityMoreErr = m.logAndSanitize("activity fetch more", ev.err)
 				return m, nil
 			}
 			m.activityMoreErr = nil
@@ -462,8 +432,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.followLoadingMore = false
 			if ev.err != nil {
-				logging.LogError("following activity fetch more", ev.err)
-				m.followMoreErr = ev.err
+				m.followMoreErr = m.logAndSanitize("following activity fetch more", ev.err)
 				return m, nil
 			}
 			m.followMoreErr = nil
@@ -475,10 +444,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.maybeFillCmd()
 	case errMsg:
-		m.diaryErr = ev.err
-		if ev.err != nil {
-			logging.LogError("activity tab", ev.err)
-		}
+		m.diaryErr = m.logAndSanitize("activity tab", ev.err)
 		m.loading = false
 	case openMsg:
 		if ev.err != nil {
@@ -488,8 +454,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case watchlistResultMsg:
 		m.watchlistPending = false
 		if ev.err != nil {
-			logging.LogError("watchlist update", ev.err)
-			m.watchlistStatus = "Error: " + ev.err.Error()
+			err := m.logAndSanitize("watchlist update", ev.err)
+			m.watchlistStatus = "Error: " + err.Error()
 			return m, nil
 		}
 		m.film.InWatchlist = ev.inWatchlist
@@ -513,6 +479,9 @@ func (m *Model) refreshModalViewport() {
 	if m.logModal {
 		return
 	}
+	if m.cookieModal {
+		return
+	}
 	if !m.profileModal && m.activeTab != tabFilm {
 		return
 	}
@@ -533,6 +502,13 @@ func (m *Model) refreshModalViewport() {
 	}
 	content := renderFilm(*m, theme)
 	m.modalVP.SetContent(content)
+}
+
+func (m *Model) logAndSanitize(context string, err error) error {
+	if err != nil {
+		logging.LogError(context, err)
+	}
+	return m.sanitizeCloudflare(err)
 }
 
 func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
@@ -698,8 +674,8 @@ func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logResultMsg:
 		m.logForm.submitting = false
 		if typed.err != nil {
-			logging.LogError("save diary entry", typed.err)
-			m.logForm.status = "Error: " + typed.err.Error()
+			err := m.logAndSanitize("save diary entry", typed.err)
+			m.logForm.status = "Error: " + err.Error()
 			return m, nil
 		}
 		m.logForm.status = "Saved!"
@@ -724,6 +700,77 @@ func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logForm.review, _ = m.logForm.review.Update(msg)
 	}
 	return m, nil
+}
+
+func (m Model) updateCookieModal(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch typed := msg.(type) {
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(typed, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
+		case key.Matches(typed, m.keys.Cancel, m.keys.ModalBack):
+			if m.cookieSaving {
+				return m, nil
+			}
+			m.cookieModal = false
+			m.cookieStatus = ""
+			return m, nil
+		case key.Matches(typed, m.keys.Select, m.keys.Submit):
+			if m.cookieSaving {
+				return m, nil
+			}
+			value := strings.TrimSpace(m.cookieInput.Value())
+			if value == "" {
+				m.cookieStatus = "Error: Cookie cannot be empty."
+				return m, nil
+			}
+			if !cookieHasCSRF(value) {
+				m.cookieStatus = "Error: Cookie missing com.xk72.webparts.csrf."
+				return m, nil
+			}
+			if !cookieHasClearance(value) {
+				m.cookieStatus = "Error: Cookie missing cf_clearance."
+				return m, nil
+			}
+			m.cookiePending = value
+			m.cookieSaving = true
+			m.cookieStatus = "Saving cookie..."
+			return m, saveCookieCmd(m.username, value)
+		}
+	case cookieSavedMsg:
+		m.cookieSaving = false
+		if typed.err != nil {
+			logging.LogError("cookie save", typed.err)
+			m.cookieStatus = "Error: " + typed.err.Error()
+			return m, nil
+		}
+		if m.client != nil {
+			m.client.Cookie = m.cookiePending
+		}
+		m.cookiePending = ""
+		m.cookieModal = false
+		m.cookieStatus = ""
+		m.loading = true
+		m.resetPagination()
+		cmds := []tea.Cmd{
+			fetchProfileCmd(m.client, m.profileUser),
+			fetchDiaryCmd(m.client, m.username, 1),
+			fetchWatchlistCmd(m.client, m.username, 1),
+			fetchActivityCmd(m.client, m.username, tabActivity, ""),
+		}
+		if m.hasCookie() {
+			cmds = append(cmds, fetchActivityCmd(m.client, m.username, tabFollowing, ""))
+		}
+		return m, tea.Batch(cmds...)
+	}
+
+	if m.cookieSaving {
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.cookieInput, cmd = m.cookieInput.Update(msg)
+	return m, cmd
 }
 
 func appendDiaryEntries(existing, incoming []letterboxd.DiaryEntry) ([]letterboxd.DiaryEntry, int) {

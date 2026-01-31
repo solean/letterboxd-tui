@@ -45,6 +45,9 @@ func (m Model) View() string {
 	if m.logModal {
 		base = renderLogModal(base, m, theme)
 	}
+	if m.cookieModal {
+		base = renderCookieModal(base, m, theme)
+	}
 	return base
 }
 
@@ -472,6 +475,47 @@ func renderLogModal(base string, m Model, theme themeStyles) string {
 	return dim + "\n" + lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0E1114")))
 }
 
+func renderCookieModal(base string, m Model, theme themeStyles) string {
+	width, height := modalDimensions(m.width, m.height)
+	innerWidth := width - 4
+	innerHeight := height - 2
+	wrapWidth := max(40, innerWidth-2)
+
+	var rows []string
+	rows = append(rows, theme.header.Render("Update Letterboxd cookie"))
+	rows = append(rows, theme.subtle.Render(wrapText("Cloudflare challenge detected. Paste a fresh Cookie header from your browser.", wrapWidth)))
+	rows = append(rows, theme.subtle.Render(wrapText("Required: com.xk72.webparts.csrf=… and cf_clearance=…", wrapWidth)))
+	if status := renderCookieStatus(m, theme, wrapWidth); status != "" {
+		rows = append(rows, "", status)
+	}
+	input := m.cookieInput.View()
+	if m.cookieInput.Focused() {
+		input = theme.itemSel.Render(input)
+	} else {
+		input = theme.item.Render(input)
+	}
+	rows = append(rows, "", theme.subtle.Render("Cookie"), input)
+	rows = append(rows, "", theme.subtle.Render("Enter to save · Esc to cancel"))
+
+	body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	panel := lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#3A4A55")).
+		Background(lipgloss.Color("#14181C")).
+		Foreground(lipgloss.Color("#E6F0F2"))
+	panelContent := lipgloss.Place(innerWidth, innerHeight, lipgloss.Left, lipgloss.Top, body)
+	modal := panel.Render(panelContent)
+
+	dim := lipgloss.NewStyle().
+		Background(lipgloss.Color("#0E1114")).
+		Foreground(lipgloss.Color("#5E6A72")).
+		Render(base)
+	return dim + "\n" + lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0E1114")))
+}
+
 func renderLogForm(m Model, theme themeStyles) string {
 	var rows []string
 	titleLine := m.film.Title
@@ -524,6 +568,18 @@ func renderLogStatus(m Model, theme themeStyles) string {
 		return theme.rateLow.Render(m.logForm.status)
 	}
 	return theme.rateHigh.Render(m.logForm.status)
+}
+
+func renderCookieStatus(m Model, theme themeStyles, width int) string {
+	status := strings.TrimSpace(m.cookieStatus)
+	if status == "" {
+		return ""
+	}
+	status = wrapText(status, width)
+	if strings.HasPrefix(status, "Error:") {
+		return theme.rateLow.Render(status)
+	}
+	return theme.subtle.Render(status)
 }
 
 func renderWatchlistStatus(status string, theme themeStyles) string {

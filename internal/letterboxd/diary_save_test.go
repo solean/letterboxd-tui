@@ -105,3 +105,33 @@ func TestSaveDiaryEntryJSONResultFalse(t *testing.T) {
 		t.Fatalf("expected unknown error for false result, got %v", err)
 	}
 }
+
+func TestSaveDiaryEntryJSONErrorsMap(t *testing.T) {
+	client := newTestClient(func(req *http.Request) (*http.Response, error) {
+		body := `{"result":false,"errors":{"viewingId":["missing viewing id"]}}`
+		return newHTTPResponse(http.StatusOK, body, map[string]string{"Content-Type": "application/json"}), nil
+	})
+	req := DiaryEntryRequest{
+		ViewingUID:   "film:123",
+		WatchedDate:  "2024-01-01",
+		JSONResponse: true,
+	}
+	if err := client.SaveDiaryEntry(req); err == nil || !strings.Contains(err.Error(), "missing viewing id") {
+		t.Fatalf("expected errors map message, got %v", err)
+	}
+}
+
+func TestSaveDiaryEntryJSONMessages(t *testing.T) {
+	client := newTestClient(func(req *http.Request) (*http.Response, error) {
+		body := `{"result":false,"messages":["not logged in"]}`
+		return newHTTPResponse(http.StatusOK, body, map[string]string{"Content-Type": "application/json"}), nil
+	})
+	req := DiaryEntryRequest{
+		ViewingUID:   "film:123",
+		WatchedDate:  "2024-01-01",
+		JSONResponse: true,
+	}
+	if err := client.SaveDiaryEntry(req); err == nil || !strings.Contains(err.Error(), "not logged in") {
+		t.Fatalf("expected messages array error, got %v", err)
+	}
+}

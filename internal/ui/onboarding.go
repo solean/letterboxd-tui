@@ -451,7 +451,3 @@ func (m onboardingModel) hasStep(stage onboardingStage) bool {
 	}
 	return false
 }
-
-func cookieHasCSRF(cookie string) bool {
-	return strings.Contains(cookie, "com.xk72.webparts.csrf=")
-}

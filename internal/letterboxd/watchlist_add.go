@@ -112,6 +112,9 @@ func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) 
 		if data, _ := io.ReadAll(io.LimitReader(resp.Body, 512)); len(data) > 0 {
 			snippet = strings.TrimSpace(string(data))
 		}
+		if isCloudflareChallenge(resp.StatusCode, snippet) {
+			return c.cloudflareError(httpReq, resp, snippet)
+		}
 		if snippet != "" {
 			return c.wrapDebug(fmt.Errorf("watchlist update failed: status %d body=%q", resp.StatusCode, snippet))
 		}
@@ -146,6 +149,9 @@ func (c *Client) postWatchlist(reqURL string, values url.Values, referer string)
 		snippet := ""
 		if data, _ := io.ReadAll(io.LimitReader(resp.Body, 512)); len(data) > 0 {
 			snippet = strings.TrimSpace(string(data))
+		}
+		if isCloudflareChallenge(resp.StatusCode, snippet) {
+			return resp.StatusCode, c.cloudflareError(httpReq, resp, snippet)
 		}
 		if snippet != "" {
 			return resp.StatusCode, c.wrapDebug(fmt.Errorf("add to watchlist failed: status %d body=%q", resp.StatusCode, snippet))

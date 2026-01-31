@@ -97,6 +97,9 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 		if data, _ := io.ReadAll(io.LimitReader(resp.Body, 512)); len(data) > 0 {
 			snippet = strings.TrimSpace(string(data))
 		}
+		if isCloudflareChallenge(resp.StatusCode, snippet) {
+			return c.cloudflareError(httpReq, resp, snippet)
+		}
 		if snippet != "" {
 			return c.wrapDebug(fmt.Errorf("save diary entry failed: status %d body=%q", resp.StatusCode, snippet))
 		}
@@ -127,14 +130,20 @@ func diarySaveError(body []byte) string {
 		return errMsg
 	}
 	if success, ok := payload["success"].(bool); ok && !success {
-		if msg := extractJSONString(payload, "message"); msg != "" {
+		if msg := extractJSONMessage(payload["message"]); msg != "" {
+			return msg
+		}
+		if msg := extractJSONMessage(payload["messages"]); msg != "" {
 			return msg
 		}
 		return "unknown error"
 	}
 	if result, ok := payload["result"].(bool); ok {
 		if !result {
-			if msg := extractJSONString(payload, "message"); msg != "" {
+			if msg := extractJSONMessage(payload["message"]); msg != "" {
+				return msg
+			}
+			if msg := extractJSONMessage(payload["messages"]); msg != "" {
 				return msg
 			}
 			return "unknown error"
@@ -143,7 +152,10 @@ func diarySaveError(body []byte) string {
 	}
 	result := strings.ToLower(extractJSONString(payload, "result"))
 	if result != "" && result != "success" && result != "ok" && result != "true" {
-		if msg := extractJSONString(payload, "message"); msg != "" {
+		if msg := extractJSONMessage(payload["message"]); msg != "" {
+			return msg
+		}
+		if msg := extractJSONMessage(payload["messages"]); msg != "" {
 			return msg
 		}
 		if result == "false" {
@@ -155,20 +167,11 @@ func diarySaveError(body []byte) string {
 }
 
 func extractJSONError(payload map[string]interface{}) string {
-	if errVal, ok := payload["error"]; ok {
-		switch typed := errVal.(type) {
-		case string:
-			if trimmed := strings.TrimSpace(typed); trimmed != "" {
-				return trimmed
-			}
-		case bool:
-			if typed {
-				return "unknown error"
-			}
-		}
+	if msg := extractJSONMessage(payload["error"]); msg != "" {
+		return msg
 	}
-	if errs := extractJSONStrings(payload["errors"]); len(errs) > 0 {
-		return strings.Join(errs, "; ")
+	if msg := extractJSONMessage(payload["errors"]); msg != "" {
+		return msg
 	}
 	return ""
 }
@@ -190,20 +193,77 @@ func extractJSONString(payload map[string]interface{}, key string) string {
 	}
 }
 
-func extractJSONStrings(val interface{}) []string {
-	items, ok := val.([]interface{})
-	if !ok {
+func extractJSONMessage(val interface{}) string {
+	msgs := extractJSONMessages(val)
+	if len(msgs) == 0 {
+		return ""
+	}
+	return strings.Join(msgs, "; ")
+}
+
+func extractJSONMessages(val interface{}) []string {
+	switch typed := val.(type) {
+	case nil:
+		return nil
+	case string:
+		if trimmed := strings.TrimSpace(typed); trimmed != "" {
+			return []string{trimmed}
+		}
+		return nil
+	case bool:
+		if typed {
+			return []string{"unknown error"}
+		}
+		return nil
+	case []string:
+		return normalizeStrings(typed)
+	case []interface{}:
+		var msgs []string
+		for _, item := range typed {
+			msgs = append(msgs, extractJSONMessages(item)...)
+		}
+		return normalizeStrings(msgs)
+	case map[string]interface{}:
+		if msg := extractJSONString(typed, "message"); msg != "" {
+			return []string{msg}
+		}
+		if msg := extractJSONString(typed, "error"); msg != "" {
+			return []string{msg}
+		}
+		if msg := extractJSONString(typed, "detail"); msg != "" {
+			return []string{msg}
+		}
+		if msg := extractJSONString(typed, "title"); msg != "" {
+			return []string{msg}
+		}
+		var msgs []string
+		for _, item := range typed {
+			msgs = append(msgs, extractJSONMessages(item)...)
+		}
+		return normalizeStrings(msgs)
+	default:
 		return nil
 	}
-	values := make([]string, 0, len(items))
-	for _, item := range items {
-		if str, ok := item.(string); ok {
-			if trimmed := strings.TrimSpace(str); trimmed != "" {
-				values = append(values, trimmed)
-			}
-		}
+}
+
+func normalizeStrings(items []string) []string {
+	if len(items) == 0 {
+		return nil
 	}
-	return values
+	seen := make(map[string]struct{}, len(items))
+	normalized := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }
 
 func clamp(v, lo, hi int) int {
