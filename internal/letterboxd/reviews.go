@@ -66,12 +66,12 @@ func parseReviews(doc *goquery.Document) ([]Review, error) {
 		"article.review, li.review, div.review",
 	}
 	for _, selector := range selectors {
-		reviews := parseReviewsBySelector(doc, selector)
+		reviews := filterReviews(parseReviewsBySelector(doc, selector))
 		if len(reviews) > 0 {
 			return reviews, nil
 		}
 	}
-	if reviews := parseReviewsByBody(doc); len(reviews) > 0 {
+	if reviews := filterReviews(parseReviewsByBody(doc)); len(reviews) > 0 {
 		return reviews, nil
 	}
 	return nil, nil
@@ -118,6 +118,49 @@ func parseReviewsByBody(doc *goquery.Document) []Review {
 		reviews = append(reviews, review)
 	})
 	return reviews
+}
+
+func filterReviews(reviews []Review) []Review {
+	if len(reviews) == 0 {
+		return reviews
+	}
+	filtered := reviews[:0]
+	for _, review := range reviews {
+		if isReviewStub(review) {
+			continue
+		}
+		filtered = append(filtered, review)
+	}
+	return filtered
+}
+
+func isReviewStub(review Review) bool {
+	author := strings.TrimSpace(strings.ToLower(review.Author))
+	text := strings.TrimSpace(strings.ToLower(review.Text))
+	if author == "" && text == "" && review.Rating == "" && review.Link == "" {
+		return true
+	}
+	if review.Link != "" || review.Rating != "" {
+		return false
+	}
+	switch author {
+	case "no reviews", "no reviews yet", "no reviews found":
+		return true
+	case "pro account":
+		if text == "" || strings.Contains(text, "letterboxd") || strings.Contains(text, "pro account") || strings.Contains(text, "upgrade") {
+			return true
+		}
+	}
+	if text == "no reviews" || text == "no reviews yet" || text == "no reviews found" {
+		return true
+	}
+	if strings.Contains(text, "letterboxd is an independent service") {
+		return true
+	}
+	if strings.Contains(text, "upgrade to a pro account") || strings.Contains(text, "upgrading to a pro account") {
+		return true
+	}
+	return false
 }
 
 func parseReviewFromSelection(view *goquery.Selection) Review {
