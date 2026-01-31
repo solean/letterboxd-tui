@@ -26,6 +26,7 @@ type keyMap struct {
 	Cancel          key.Binding
 	Submit          key.Binding
 	Toggle          key.Binding
+	Sort            key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -121,6 +122,10 @@ func newKeyMap() keyMap {
 		Toggle: key.NewBinding(
 			key.WithKeys("space"),
 			key.WithHelp("space", "toggle"),
+		),
+		Sort: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "sort"),
 		),
 	}
 }

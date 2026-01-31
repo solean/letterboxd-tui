@@ -108,6 +108,8 @@ type Model struct {
 	cookiePending            string
 	watchlistStatus          string
 	watchlistPending         bool
+	diarySort                diarySort
+	watchlistSort            watchlistSort
 	searchInput              textinput.Model
 	searchFocusInput         bool
 	keys                     keyMap
@@ -145,6 +147,8 @@ func NewModel(username string, client *letterboxd.Client) Model {
 		searchFocusInput: true,
 		keys:             newKeyMap(),
 		help:             help.New(),
+		diarySort:        diarySortRecent,
+		watchlistSort:    watchlistSortAdded,
 	}
 }
 
@@ -498,6 +502,30 @@ func (m *Model) resetPagination() {
 	m.followMoreErr = nil
 }
 
+func (m *Model) resetDiaryList() {
+	m.diary = nil
+	m.diaryErr = nil
+	m.diaryPage = 0
+	m.diaryLoadingMore = false
+	m.diaryDone = false
+	m.diaryMoreErr = nil
+	m.diaryList.selected = 0
+	m.viewport.YOffset = 0
+	m.loading = true
+}
+
+func (m *Model) resetWatchlist() {
+	m.watchlist = nil
+	m.watchErr = nil
+	m.watchPage = 0
+	m.watchLoadingMore = false
+	m.watchDone = false
+	m.watchMoreErr = nil
+	m.watchList.selected = 0
+	m.viewport.YOffset = 0
+	m.loading = true
+}
+
 func (m *Model) maybeLoadMoreCmd() tea.Cmd {
 	const threshold = 3
 	switch m.activeTab {
@@ -516,7 +544,7 @@ func (m *Model) maybeLoadMoreCmd() tea.Cmd {
 			page = 2
 		}
 		m.diaryLoadingMore = true
-		return fetchDiaryCmd(m.client, m.username, page)
+		return fetchDiaryCmd(m.client, m.username, page, m.diarySortParam())
 	case tabWatchlist:
 		if m.watchLoadingMore || m.watchDone || m.watchMoreErr != nil {
 			return nil
@@ -532,7 +560,7 @@ func (m *Model) maybeLoadMoreCmd() tea.Cmd {
 			page = 2
 		}
 		m.watchLoadingMore = true
-		return fetchWatchlistCmd(m.client, m.username, page)
+		return fetchWatchlistCmd(m.client, m.username, page, m.watchlistSortParam())
 	case tabActivity:
 		if m.activityLoadingMore || m.activityDone || m.activityMoreErr != nil {
 			return nil
@@ -592,7 +620,7 @@ func (m *Model) maybeFillCmd() tea.Cmd {
 			page = 2
 		}
 		m.diaryLoadingMore = true
-		return fetchDiaryCmd(m.client, m.username, page)
+		return fetchDiaryCmd(m.client, m.username, page, m.diarySortParam())
 	case tabWatchlist:
 		if m.watchLoadingMore || m.watchDone || m.watchMoreErr != nil {
 			return nil
@@ -608,7 +636,7 @@ func (m *Model) maybeFillCmd() tea.Cmd {
 			page = 2
 		}
 		m.watchLoadingMore = true
-		return fetchWatchlistCmd(m.client, m.username, page)
+		return fetchWatchlistCmd(m.client, m.username, page, m.watchlistSortParam())
 	case tabActivity:
 		if m.activityLoadingMore || m.activityDone || m.activityMoreErr != nil {
 			return nil

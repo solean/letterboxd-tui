@@ -232,14 +232,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetPagination()
 			cmds := []tea.Cmd{
 				fetchProfileCmd(m.client, m.profileUser),
-				fetchDiaryCmd(m.client, m.username, 1),
-				fetchWatchlistCmd(m.client, m.username, 1),
+				fetchDiaryCmd(m.client, m.username, 1, m.diarySortParam()),
+				fetchWatchlistCmd(m.client, m.username, 1, m.watchlistSortParam()),
 				fetchActivityCmd(m.client, m.username, tabActivity, ""),
 			}
 			if m.hasCookie() {
 				cmds = append(cmds, fetchActivityCmd(m.client, m.username, tabFollowing, ""))
 			}
 			return m, tea.Batch(cmds...)
+		case key.Matches(ev, m.keys.Sort):
+			switch m.activeTab {
+			case tabDiary:
+				m.diarySort = m.diarySort.next()
+				m.resetDiaryList()
+				return m, fetchDiaryCmd(m.client, m.username, 1, m.diarySortParam())
+			case tabWatchlist:
+				m.watchlistSort = m.watchlistSort.next()
+				m.resetWatchlist()
+				return m, fetchWatchlistCmd(m.client, m.username, 1, m.watchlistSortParam())
+			}
 		case key.Matches(ev, m.keys.Select):
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
@@ -330,6 +341,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.profileList.selected = 0
 		}
 	case diaryMsg:
+		if ev.sort != m.diarySortParam() {
+			return m, nil
+		}
 		if ev.page <= 1 {
 			m.diary = ev.items
 			m.diaryErr = m.logAndSanitize("diary fetch", ev.err)
@@ -338,6 +352,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diaryLoadingMore = false
 			m.diaryMoreErr = nil
 			m.loading = false
+			m.diaryList.selected = 0
+			if m.activeTab == tabDiary {
+				m.viewport.YOffset = 0
+			}
 		} else {
 			m.diaryLoadingMore = false
 			if ev.err != nil {
@@ -355,6 +373,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.maybeFillCmd()
 	case watchlistMsg:
+		if ev.sort != m.watchlistSortParam() {
+			return m, nil
+		}
 		if ev.page <= 1 {
 			m.watchlist = ev.items
 			m.watchErr = m.logAndSanitize("watchlist fetch", ev.err)
@@ -364,6 +385,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.watchLoadingMore = false
 			m.watchMoreErr = nil
 			m.loading = false
+			m.watchList.selected = 0
+			if m.activeTab == tabWatchlist {
+				m.viewport.YOffset = 0
+			}
 		} else {
 			m.watchLoadingMore = false
 			if ev.err != nil {
@@ -469,7 +494,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, tea.Batch(
 			fetchFilmCmd(m.client, m.film.URL, m.username),
-			fetchWatchlistCmd(m.client, m.username, 1),
+			fetchWatchlistCmd(m.client, m.username, 1, m.watchlistSortParam()),
 		)
 	}
 	return m, nil
@@ -755,8 +780,8 @@ func (m Model) updateCookieModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resetPagination()
 		cmds := []tea.Cmd{
 			fetchProfileCmd(m.client, m.profileUser),
-			fetchDiaryCmd(m.client, m.username, 1),
-			fetchWatchlistCmd(m.client, m.username, 1),
+			fetchDiaryCmd(m.client, m.username, 1, m.diarySortParam()),
+			fetchWatchlistCmd(m.client, m.username, 1, m.watchlistSortParam()),
 			fetchActivityCmd(m.client, m.username, tabActivity, ""),
 		}
 		if m.hasCookie() {

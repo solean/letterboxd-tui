@@ -45,11 +45,8 @@ func (c *Client) Profile(username string) (Profile, error) {
 	return profile, c.wrapDebug(err)
 }
 
-func (c *Client) Diary(username string, page int) ([]DiaryEntry, error) {
-	url := fmt.Sprintf("%s/%s/diary/", BaseURL, username)
-	if page > 1 {
-		url = fmt.Sprintf("%s/%s/diary/films/page/%d/", BaseURL, username, page)
-	}
+func (c *Client) Diary(username string, page int, sort DiarySort) ([]DiaryEntry, error) {
+	url := diaryURL(username, page, sort)
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, c.wrapDebug(err)
@@ -58,11 +55,8 @@ func (c *Client) Diary(username string, page int) ([]DiaryEntry, error) {
 	return entries, c.wrapDebug(err)
 }
 
-func (c *Client) Watchlist(username string, page int) ([]WatchlistItem, error) {
-	url := fmt.Sprintf("%s/%s/watchlist/", BaseURL, username)
-	if page > 1 {
-		url = fmt.Sprintf("%s/%s/watchlist/page/%d/", BaseURL, username, page)
-	}
+func (c *Client) Watchlist(username string, page int, sort WatchlistSort) ([]WatchlistItem, error) {
+	url := watchlistURL(username, page, sort)
 	doc, err := c.fetchDocument(url)
 	if err != nil {
 		return nil, c.wrapDebug(err)

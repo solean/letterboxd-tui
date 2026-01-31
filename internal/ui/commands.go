@@ -18,12 +18,14 @@ type diaryMsg struct {
 	items []letterboxd.DiaryEntry
 	err   error
 	page  int
+	sort  letterboxd.DiarySort
 }
 
 type watchlistMsg struct {
 	items []letterboxd.WatchlistItem
 	err   error
 	page  int
+	sort  letterboxd.WatchlistSort
 }
 
 type filmMsg struct {
@@ -80,8 +82,8 @@ type watchlistResultMsg struct {
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		fetchProfileCmd(m.client, m.profileUser),
-		fetchDiaryCmd(m.client, m.username, 1),
-		fetchWatchlistCmd(m.client, m.username, 1),
+		fetchDiaryCmd(m.client, m.username, 1, m.diarySortParam()),
+		fetchWatchlistCmd(m.client, m.username, 1, m.watchlistSortParam()),
 		fetchActivityCmd(m.client, m.username, tabActivity, ""),
 	}
 	if m.hasCookie() {
@@ -104,17 +106,17 @@ func fetchProfileModalCmd(client *letterboxd.Client, username string) tea.Cmd {
 	}
 }
 
-func fetchDiaryCmd(client *letterboxd.Client, username string, page int) tea.Cmd {
+func fetchDiaryCmd(client *letterboxd.Client, username string, page int, sort letterboxd.DiarySort) tea.Cmd {
 	return func() tea.Msg {
-		items, err := client.Diary(username, page)
-		return diaryMsg{items: items, err: err, page: page}
+		items, err := client.Diary(username, page, sort)
+		return diaryMsg{items: items, err: err, page: page, sort: sort}
 	}
 }
 
-func fetchWatchlistCmd(client *letterboxd.Client, username string, page int) tea.Cmd {
+func fetchWatchlistCmd(client *letterboxd.Client, username string, page int, sort letterboxd.WatchlistSort) tea.Cmd {
 	return func() tea.Msg {
-		items, err := client.Watchlist(username, page)
-		return watchlistMsg{items: items, err: err, page: page}
+		items, err := client.Watchlist(username, page, sort)
+		return watchlistMsg{items: items, err: err, page: page, sort: sort}
 	}
 }
 
