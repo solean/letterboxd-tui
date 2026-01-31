@@ -173,4 +173,9 @@ func TestModalOpen(t *testing.T) {
 	if !m.modalOpen() {
 		t.Fatalf("expected modal open")
 	}
+	m.profileModal = false
+	m.cookieModal = true
+	if !m.modalOpen() {
+		t.Fatalf("expected modal open")
+	}
 }

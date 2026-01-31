@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/solean/letterboxd-tui/internal/config"
 	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
 
@@ -63,6 +65,10 @@ type openMsg struct {
 }
 
 type logResultMsg struct {
+	err error
+}
+
+type cookieSavedMsg struct {
 	err error
 }
 
@@ -166,6 +172,13 @@ func saveDiaryEntryCmd(client *letterboxd.Client, req letterboxd.DiaryEntryReque
 	return func() tea.Msg {
 		err := client.SaveDiaryEntry(req)
 		return logResultMsg{err: err}
+	}
+}
+
+func saveCookieCmd(username, cookie string) tea.Cmd {
+	return func() tea.Msg {
+		cfg := config.Config{Username: strings.TrimSpace(username), Cookie: strings.TrimSpace(cookie)}
+		return cookieSavedMsg{err: config.Save(cfg)}
 	}
 }
 

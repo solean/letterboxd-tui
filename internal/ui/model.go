@@ -101,6 +101,11 @@ type Model struct {
 	logModal                 bool
 	logForm                  logForm
 	logSpinner               spinner.Model
+	cookieModal              bool
+	cookieInput              textinput.Model
+	cookieStatus             string
+	cookieSaving             bool
+	cookiePending            string
 	watchlistStatus          string
 	watchlistPending         bool
 	searchInput              textinput.Model
@@ -120,6 +125,11 @@ func NewModel(username string, client *letterboxd.Client) Model {
 	searchInput := textinput.New()
 	searchInput.Placeholder = "Search films"
 	searchInput.CharLimit = 80
+	cookieInput := textinput.New()
+	cookieInput.Placeholder = "com.xk72.webparts.csrf=..."
+	cookieInput.CharLimit = 0
+	cookieInput.EchoMode = textinput.EchoPassword
+	cookieInput.EchoCharacter = '*'
 	return Model{
 		username:         username,
 		profileUser:      username,
@@ -130,6 +140,7 @@ func NewModel(username string, client *letterboxd.Client) Model {
 		viewport:         viewport.New(0, 0),
 		modalVP:          viewport.New(0, 0),
 		logSpinner:       spinner.New(spinner.WithSpinner(spinner.Dot)),
+		cookieInput:      cookieInput,
 		searchInput:      searchInput,
 		searchFocusInput: true,
 		keys:             newKeyMap(),
@@ -188,6 +199,40 @@ func (m Model) hasCookie() bool {
 		return false
 	}
 	return strings.TrimSpace(m.client.Cookie) != ""
+}
+
+func (m *Model) promptCookieUpdate(hint string) {
+	if m.cookieModal {
+		if m.cookieStatus == "" {
+			m.cookieStatus = hint
+		}
+		return
+	}
+	m.cookieModal = true
+	m.cookieSaving = false
+	m.cookiePending = ""
+	m.cookieStatus = strings.TrimSpace(hint)
+	if m.client != nil {
+		m.cookieInput.SetValue(strings.TrimSpace(m.client.Cookie))
+	} else {
+		m.cookieInput.SetValue("")
+	}
+	m.cookieInput.CursorEnd()
+	m.cookieInput.Focus()
+}
+
+func (m *Model) sanitizeCloudflare(err error) error {
+	if err == nil {
+		return nil
+	}
+	hint, ok := cloudflareHint(err)
+	if !ok {
+		return err
+	}
+	if !m.cookieModal {
+		m.promptCookieUpdate(hint)
+	}
+	return errors.New(hint)
 }
 
 func (m *Model) moveSelection(delta int) {
@@ -864,5 +909,5 @@ func (m Model) watchlistState() (bool, bool) {
 }
 
 func (m Model) modalOpen() bool {
-	return m.activeTab == tabFilm || m.profileModal || m.logModal
+	return m.activeTab == tabFilm || m.profileModal || m.logModal || m.cookieModal
 }

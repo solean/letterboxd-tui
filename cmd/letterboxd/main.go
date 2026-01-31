@@ -54,6 +54,8 @@ func main() {
 	if setupFlag {
 		state.needUsername = true
 		state.needCookie = true
+		state.username = ""
+		state.cookie = ""
 	}
 	if noCookieFlag {
 		state.cookie = ""
