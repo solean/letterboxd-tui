@@ -77,3 +77,36 @@ func TestUserFilmURL(t *testing.T) {
 		t.Fatalf("unexpected user film URL: %q", got)
 	}
 }
+
+func TestDiaryURL(t *testing.T) {
+	if got := diaryURL("jane", 1, DiarySortDefault); got != BaseURL+"/jane/diary/" {
+		t.Fatalf("unexpected diary URL: %q", got)
+	}
+	if got := diaryURL("jane", 2, DiarySortDefault); got != BaseURL+"/jane/diary/films/page/2/" {
+		t.Fatalf("unexpected diary URL: %q", got)
+	}
+	if got := diaryURL("jane", 1, DiarySortAddedEarliest); got != BaseURL+"/jane/diary/films/by/added-earliest/" {
+		t.Fatalf("unexpected diary URL: %q", got)
+	}
+	if got := diaryURL("jane", 3, DiarySortRating); got != BaseURL+"/jane/diary/films/by/entry-rating/page/3/" {
+		t.Fatalf("unexpected diary URL: %q", got)
+	}
+}
+
+func TestWatchlistURL(t *testing.T) {
+	if got := watchlistURL("jane", 1, WatchlistSortDefault); got != BaseURL+"/jane/watchlist/" {
+		t.Fatalf("unexpected watchlist URL: %q", got)
+	}
+	if got := watchlistURL("jane", 2, WatchlistSortDefault); got != BaseURL+"/jane/watchlist/page/2/" {
+		t.Fatalf("unexpected watchlist URL: %q", got)
+	}
+	if got := watchlistURL("jane", 1, WatchlistSortName); got != BaseURL+"/jane/watchlist/by/name/" {
+		t.Fatalf("unexpected watchlist URL: %q", got)
+	}
+	if got := watchlistURL("jane", 2, WatchlistSortRating); got != BaseURL+"/jane/watchlist/by/rating/page/2/" {
+		t.Fatalf("unexpected watchlist URL: %q", got)
+	}
+	if got := watchlistURL("jane", 4, WatchlistSortRelease); got != BaseURL+"/jane/watchlist/by/release/page/4/" {
+		t.Fatalf("unexpected watchlist URL: %q", got)
+	}
+}

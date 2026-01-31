@@ -73,10 +73,10 @@ func TestClientMethods(t *testing.T) {
 	if _, err := client.Profile("jane"); err != nil {
 		t.Fatalf("Profile error: %v", err)
 	}
-	if _, err := client.Diary("jane", 1); err != nil {
+	if _, err := client.Diary("jane", 1, DiarySortDefault); err != nil {
 		t.Fatalf("Diary error: %v", err)
 	}
-	if _, err := client.Watchlist("jane", 1); err != nil {
+	if _, err := client.Watchlist("jane", 1, WatchlistSortDefault); err != nil {
 		t.Fatalf("Watchlist error: %v", err)
 	}
 	if _, err := client.Activity("jane", ""); err != nil {

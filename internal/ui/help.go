@@ -123,7 +123,15 @@ func (m Model) helpMap() helpKeyMap {
 			} else {
 				enter = helpBinding(keys.Select, "enter", "view film")
 			}
-			return newHelpKeyMap([]key.Binding{navMove, page, keys.JumpTop, keys.JumpBottom, enter, keys.SearchTab, switchTabs, keys.Refresh, helpToggle, keys.Quit, keys.QuitAll})
+			short := []key.Binding{navMove, page, keys.JumpTop, keys.JumpBottom, enter}
+			if m.activeTab == tabDiary {
+				short = append(short, helpBinding(keys.Sort, "s", "sort: "+m.diarySortLabel()))
+			}
+			if m.activeTab == tabWatchlist {
+				short = append(short, helpBinding(keys.Sort, "s", "sort: "+m.watchlistSortLabel()))
+			}
+			short = append(short, keys.SearchTab, switchTabs, keys.Refresh, helpToggle, keys.Quit, keys.QuitAll)
+			return newHelpKeyMap(short)
 		default:
 			return newHelpKeyMap([]key.Binding{keys.JumpTop, keys.JumpBottom, keys.SearchTab, switchTabs, keys.Refresh, helpToggle, keys.Quit, keys.QuitAll})
 		}

@@ -70,10 +70,10 @@ func TestFetchCommands(t *testing.T) {
 	if msg := fetchProfileCmd(client, "jane")(); msg.(profileMsg).err != nil {
 		t.Fatalf("unexpected profile error")
 	}
-	if msg := fetchDiaryCmd(client, "jane", 1)(); msg.(diaryMsg).err != nil {
+	if msg := fetchDiaryCmd(client, "jane", 1, letterboxd.DiarySortDefault)(); msg.(diaryMsg).err != nil {
 		t.Fatalf("unexpected diary error")
 	}
-	if msg := fetchWatchlistCmd(client, "jane", 1)(); msg.(watchlistMsg).err != nil {
+	if msg := fetchWatchlistCmd(client, "jane", 1, letterboxd.WatchlistSortDefault)(); msg.(watchlistMsg).err != nil {
 		t.Fatalf("unexpected watchlist error")
 	}
 	if msg := fetchActivityCmd(client, "jane", tabActivity, "")(); msg.(activityMsg).err != nil {
