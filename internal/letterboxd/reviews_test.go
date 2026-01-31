@@ -59,3 +59,22 @@ func TestParseReviewsFilmDetail(t *testing.T) {
 		t.Fatalf("unexpected link: %q", reviews[0].Link)
 	}
 }
+
+func TestParseReviewsFiltersUpsell(t *testing.T) {
+	html := `
+	<div class="review">
+		<span class="displayname">No reviews</span>
+	</div>
+	<div class="review">
+		<span class="displayname">Pro account</span>
+		<div class="review-body">Letterboxd is an independent service created by a small team.</div>
+	</div>`
+	doc := docFromHTML(t, html)
+	reviews, err := parseReviews(doc)
+	if err != nil {
+		t.Fatalf("parseReviews error: %v", err)
+	}
+	if len(reviews) != 0 {
+		t.Fatalf("expected 0 reviews, got %d", len(reviews))
+	}
+}
