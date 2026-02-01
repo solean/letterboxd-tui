@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/solean/letterboxd-tui/internal/letterboxd"
 )
@@ -324,6 +325,23 @@ func (m *Model) resetTabPosition() {
 		m.followList.selected = 0
 	}
 	m.lastTab = m.activeTab
+	m.resizeViewport()
+}
+
+func (m *Model) resizeViewport() {
+	if m.width <= 0 || m.height <= 0 {
+		return
+	}
+	theme := newTheme()
+	header := theme.header.Render("Letterboxd TUI") + " " + theme.subtle.Render("@"+m.username)
+	tabLine := renderTabs(*m, theme)
+	footer := renderHelp(*m, theme, m.width)
+	chromeHeight := lipgloss.Height(header) + lipgloss.Height(tabLine) + lipgloss.Height(footer)
+	bodyHeight := max(1, m.height-chromeHeight)
+
+	m.viewport.Width = m.width
+	m.viewport.Height = bodyHeight
+	m.help.Width = m.width
 }
 
 func (m *Model) pageSelection(dir int) {
@@ -850,6 +868,7 @@ func (m Model) openSelectedProfile() Model {
 	m.profileModal = true
 	m.modalVP.YOffset = 0
 	m.refreshModalViewport()
+	(&m).resizeViewport()
 	return m
 }
 
@@ -889,6 +908,7 @@ func (m Model) openSelectedModalFilm() Model {
 	m.modalVP.YOffset = 0
 	m.modalVP.SetContent("")
 	m.refreshModalViewport()
+	(&m).resizeViewport()
 	return m
 }
 
@@ -957,6 +977,7 @@ func (m Model) openSelectedFilm() Model {
 	m.modalVP.YOffset = 0
 	m.modalVP.SetContent("")
 	m.refreshModalViewport()
+	(&m).resizeViewport()
 	return m
 }
 
@@ -969,6 +990,7 @@ func (m Model) goBackProfile() Model {
 	m.profileUser = last
 	m.activeTab = tabProfile
 	m.loading = true
+	(&m).resizeViewport()
 	return m
 }
 
@@ -982,6 +1004,7 @@ func (m Model) startLogModal() Model {
 	form.focusField(logFieldRating)
 	m.logForm = form
 	m.logModal = true
+	(&m).resizeViewport()
 	return m
 }
 
