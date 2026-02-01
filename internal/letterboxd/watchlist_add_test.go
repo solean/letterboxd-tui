@@ -61,6 +61,24 @@ func TestSetWatchlistFallbackToFilmID(t *testing.T) {
 	}
 }
 
+func TestPatchWatchlistRetriesForbidden(t *testing.T) {
+	calls := 0
+	client := newTestClient(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return newHTTPResponse(http.StatusForbidden, "", nil), nil
+		}
+		return newHTTPResponse(http.StatusOK, "ok", nil), nil
+	})
+	err := client.patchWatchlist(BaseURL+"/api/v0/me/watchlist/lid123", "csrf123", "", true)
+	if err != nil {
+		t.Fatalf("expected retry success, got %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 attempts, got %d", calls)
+	}
+}
+
 func TestPatchWatchlistError(t *testing.T) {
 	client := newTestClient(func(req *http.Request) (*http.Response, error) {
 		return newHTTPResponse(http.StatusBadRequest, "nope", nil), nil

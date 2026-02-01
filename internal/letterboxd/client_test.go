@@ -27,6 +27,23 @@ func TestFetchDocumentStatusError(t *testing.T) {
 	}
 }
 
+func TestFetchDocumentStatusRetriesForbidden(t *testing.T) {
+	calls := 0
+	client := newTestClient(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return newHTTPResponse(http.StatusForbidden, "", nil), nil
+		}
+		return newHTTPResponse(http.StatusOK, "<html></html>", nil), nil
+	})
+	if _, err := client.fetchDocument(BaseURL + "/retry"); err != nil {
+		t.Fatalf("expected retry success, got %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 attempts, got %d", calls)
+	}
+}
+
 func TestClientMethods(t *testing.T) {
 	profileHTML := `<div class="profile-stats"><div class="profile-statistic">
 		<span class="value">1</span><span class="definition">Films</span><a href="/jane/films/"></a>
