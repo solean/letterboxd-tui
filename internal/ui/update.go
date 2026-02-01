@@ -18,10 +18,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = ws.Width
 		m.height = ws.Height
-		bodyHeight := max(1, m.height-3)
-		m.viewport.Width = m.width
-		m.viewport.Height = bodyHeight
-		m.help.Width = m.width
+		m.resizeViewport()
 		if m.logModal {
 			m.logForm.setSize(m.width)
 		}
@@ -120,6 +117,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case key.Matches(ev, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
+			m.resizeViewport()
 			return m, nil
 		case m.handleJumpKeys(ev):
 			return m, nil
@@ -132,14 +130,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modalVP.YOffset = m.modalReturnYOffset
 					m.filmReturnProfileModal = false
 					m.refreshModalViewport()
+					m.resizeViewport()
 				}
 			} else if m.profileModal {
 				m.profileModal = false
+				m.resizeViewport()
 			}
 			return m, nil
 		case key.Matches(ev, m.keys.SearchTab):
 			if m.profileModal {
 				m.profileModal = false
+				m.resizeViewport()
 			}
 			if m.activeTab != tabSearch {
 				m.activeTab = tabSearch
@@ -148,6 +149,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.searchFocusInput = true
 			m.searchInput.Focus()
+			m.resizeViewport()
 			return m, nil
 		case key.Matches(ev, m.keys.Quit):
 			return m, tea.Quit
@@ -374,9 +376,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modalVP.YOffset = m.modalReturnYOffset
 					m.filmReturnProfileModal = false
 					m.refreshModalViewport()
+					m.resizeViewport()
 				}
 			} else if m.profileModal {
 				m.profileModal = false
+				m.resizeViewport()
 			}
 		}
 	case profileMsg:
@@ -608,6 +612,7 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.searchResults = nil
 			m.searchFocusInput = false
 			m.searchInput.Blur()
+			m.resizeViewport()
 			return fetchSearchCmd(m.client, query), true
 		}
 		updated := m.openSelectedFilm()
@@ -619,10 +624,12 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, m.keys.SearchTab):
 		m.searchFocusInput = true
 		m.searchInput.Focus()
+		m.resizeViewport()
 		return nil, true
 	case key.Matches(msg, m.keys.Cancel):
 		m.searchFocusInput = false
 		m.searchInput.Blur()
+		m.resizeViewport()
 		return nil, true
 	case key.Matches(msg, m.keys.Down):
 		if m.searchFocusInput {
@@ -692,10 +699,12 @@ func (m Model) updateLogModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(typed, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
+			m.resizeViewport()
 			return m, nil
 		case key.Matches(typed, m.keys.Cancel, m.keys.ModalBack):
 			m.logModal = false
 			m.logForm.submitting = false
+			m.resizeViewport()
 			return m, nil
 		case key.Matches(typed, m.keys.NextTab):
 			m.logForm.focusField(m.logForm.focus + 1)
@@ -787,6 +796,7 @@ func (m Model) updateCookieModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(typed, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
+			m.resizeViewport()
 			return m, nil
 		case key.Matches(typed, m.keys.Cancel, m.keys.ModalBack):
 			if m.cookieSaving {
@@ -794,6 +804,7 @@ func (m Model) updateCookieModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.cookieModal = false
 			m.cookieStatus = ""
+			m.resizeViewport()
 			return m, nil
 		case key.Matches(typed, m.keys.Select, m.keys.Submit):
 			if m.cookieSaving {
