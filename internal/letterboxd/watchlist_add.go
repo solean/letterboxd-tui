@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type WatchlistRequest struct {
@@ -85,34 +86,53 @@ func (c *Client) SetWatchlist(req WatchlistRequest, inWatchlist bool) error {
 }
 
 func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) error {
+	const maxAttempts = 1
+	useFallback := false
 	payload := fmt.Sprintf(`{"inWatchlist":%t}`, inWatchlist)
-	httpReq, err := http.NewRequest(http.MethodPatch, reqURL, strings.NewReader(payload))
-	if err != nil {
-		return c.wrapDebug(err)
-	}
-	applyDefaultHeaders(httpReq)
-	httpReq.Header.Set("Content-Type", "application/json; charset=UTF-8")
-	httpReq.Header.Set("Accept", "*/*")
-	httpReq.Header.Set("Origin", BaseURL)
-	httpReq.Header.Set("X-CSRF-Token", csrf)
-	if strings.TrimSpace(referer) != "" {
-		httpReq.Header.Set("Referer", referer)
-	}
-	if c.Cookie != "" {
-		httpReq.Header.Set("Cookie", c.Cookie)
-	}
+	for attempt := 0; attempt <= maxAttempts; attempt++ {
+		httpReq, err := http.NewRequest(http.MethodPatch, reqURL, strings.NewReader(payload))
+		if err != nil {
+			return c.wrapDebug(err)
+		}
+		applyDefaultHeaders(httpReq)
+		httpReq.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		httpReq.Header.Set("Accept", "*/*")
+		httpReq.Header.Set("Origin", BaseURL)
+		httpReq.Header.Set("X-CSRF-Token", csrf)
+		if strings.TrimSpace(referer) != "" {
+			httpReq.Header.Set("Referer", referer)
+		}
+		if c.Cookie != "" {
+			httpReq.Header.Set("Cookie", c.Cookie)
+		}
 
-	resp, err := c.HTTP.Do(httpReq)
-	if err != nil {
-		return c.wrapDebug(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		client := c.HTTP
+		if useFallback {
+			client = c.fallbackClient()
+		}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return c.wrapDebug(err)
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			resp.Body.Close()
+			return nil
+		}
 		snippet := ""
 		if data, _ := io.ReadAll(io.LimitReader(resp.Body, 512)); len(data) > 0 {
 			snippet = strings.TrimSpace(string(data))
 		}
-		if isCloudflareChallenge(resp.StatusCode, snippet) {
+		resp.Body.Close()
+		isChallenge := isCloudflareChallenge(resp.StatusCode, snippet)
+		if attempt < maxAttempts && (isChallenge || shouldRetryStatus(resp.StatusCode)) {
+			if !useFallback {
+				useFallback = true
+				continue
+			}
+			time.Sleep(cloudflareBackoff(attempt))
+			continue
+		}
+		if isChallenge {
 			return c.cloudflareError(httpReq, resp, snippet)
 		}
 		if snippet != "" {
@@ -120,37 +140,58 @@ func (c *Client) patchWatchlist(reqURL, csrf, referer string, inWatchlist bool) 
 		}
 		return c.wrapDebug(fmt.Errorf("watchlist update failed: status %d", resp.StatusCode))
 	}
-	return nil
+	return c.wrapDebug(errors.New("watchlist update failed: retry attempts exhausted"))
 }
 
 func (c *Client) postWatchlist(reqURL string, values url.Values, referer string) (int, error) {
-	httpReq, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(values.Encode()))
-	if err != nil {
-		return 0, c.wrapDebug(err)
-	}
-	applyDefaultHeaders(httpReq)
-	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	httpReq.Header.Set("Origin", BaseURL)
-	httpReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
-	httpReq.Header.Set("X-Requested-With", "XMLHttpRequest")
-	if strings.TrimSpace(referer) != "" {
-		httpReq.Header.Set("Referer", referer)
-	}
-	if c.Cookie != "" {
-		httpReq.Header.Set("Cookie", c.Cookie)
-	}
+	const maxAttempts = 1
+	useFallback := false
+	var lastStatus int
+	for attempt := 0; attempt <= maxAttempts; attempt++ {
+		httpReq, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(values.Encode()))
+		if err != nil {
+			return 0, c.wrapDebug(err)
+		}
+		applyDefaultHeaders(httpReq)
+		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		httpReq.Header.Set("Origin", BaseURL)
+		httpReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+		httpReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		if strings.TrimSpace(referer) != "" {
+			httpReq.Header.Set("Referer", referer)
+		}
+		if c.Cookie != "" {
+			httpReq.Header.Set("Cookie", c.Cookie)
+		}
 
-	resp, err := c.HTTP.Do(httpReq)
-	if err != nil {
-		return 0, c.wrapDebug(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		client := c.HTTP
+		if useFallback {
+			client = c.fallbackClient()
+		}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return 0, c.wrapDebug(err)
+		}
+		lastStatus = resp.StatusCode
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			resp.Body.Close()
+			return resp.StatusCode, nil
+		}
 		snippet := ""
 		if data, _ := io.ReadAll(io.LimitReader(resp.Body, 512)); len(data) > 0 {
 			snippet = strings.TrimSpace(string(data))
 		}
-		if isCloudflareChallenge(resp.StatusCode, snippet) {
+		resp.Body.Close()
+		isChallenge := isCloudflareChallenge(resp.StatusCode, snippet)
+		if attempt < maxAttempts && (isChallenge || shouldRetryStatus(resp.StatusCode)) {
+			if !useFallback {
+				useFallback = true
+				continue
+			}
+			time.Sleep(cloudflareBackoff(attempt))
+			continue
+		}
+		if isChallenge {
 			return resp.StatusCode, c.cloudflareError(httpReq, resp, snippet)
 		}
 		if snippet != "" {
@@ -158,5 +199,5 @@ func (c *Client) postWatchlist(reqURL string, values url.Values, referer string)
 		}
 		return resp.StatusCode, c.wrapDebug(fmt.Errorf("add to watchlist failed: status %d", resp.StatusCode))
 	}
-	return resp.StatusCode, nil
+	return lastStatus, c.wrapDebug(errors.New("add to watchlist failed: retry attempts exhausted"))
 }

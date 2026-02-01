@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type DiaryEntryRequest struct {
@@ -70,34 +71,65 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 		values.Set("privacyPolicyDraft", "true")
 	}
 
+	const maxAttempts = 1
+	useFallback := false
 	reqURL := fmt.Sprintf("%s/s/save-diary-entry", BaseURL)
-	httpReq, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(values.Encode()))
-	if err != nil {
-		return c.wrapDebug(err)
-	}
-	applyDefaultHeaders(httpReq)
-	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	httpReq.Header.Set("Origin", BaseURL)
-	httpReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
-	httpReq.Header.Set("X-Requested-With", "XMLHttpRequest")
-	if strings.TrimSpace(req.Referer) != "" {
-		httpReq.Header.Set("Referer", req.Referer)
-	}
-	if c.Cookie != "" {
-		httpReq.Header.Set("Cookie", c.Cookie)
-	}
+	encoded := values.Encode()
+	for attempt := 0; attempt <= maxAttempts; attempt++ {
+		httpReq, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(encoded))
+		if err != nil {
+			return c.wrapDebug(err)
+		}
+		applyDefaultHeaders(httpReq)
+		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		httpReq.Header.Set("Origin", BaseURL)
+		httpReq.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
+		httpReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		if strings.TrimSpace(req.Referer) != "" {
+			httpReq.Header.Set("Referer", req.Referer)
+		}
+		if c.Cookie != "" {
+			httpReq.Header.Set("Cookie", c.Cookie)
+		}
 
-	resp, err := c.HTTP.Do(httpReq)
-	if err != nil {
-		return c.wrapDebug(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		client := c.HTTP
+		if useFallback {
+			client = c.fallbackClient()
+		}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return c.wrapDebug(err)
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			if req.JSONResponse {
+				body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+				resp.Body.Close()
+				if err != nil {
+					return c.wrapDebug(err)
+				}
+				if errMsg := diarySaveError(body); errMsg != "" {
+					return c.wrapDebug(fmt.Errorf("save diary entry failed: %s", errMsg))
+				}
+				return nil
+			}
+			resp.Body.Close()
+			return nil
+		}
 		snippet := ""
 		if data, _ := io.ReadAll(io.LimitReader(resp.Body, 512)); len(data) > 0 {
 			snippet = strings.TrimSpace(string(data))
 		}
-		if isCloudflareChallenge(resp.StatusCode, snippet) {
+		resp.Body.Close()
+		isChallenge := isCloudflareChallenge(resp.StatusCode, snippet)
+		if attempt < maxAttempts && (isChallenge || shouldRetryStatus(resp.StatusCode)) {
+			if !useFallback {
+				useFallback = true
+				continue
+			}
+			time.Sleep(cloudflareBackoff(attempt))
+			continue
+		}
+		if isChallenge {
 			return c.cloudflareError(httpReq, resp, snippet)
 		}
 		if snippet != "" {
@@ -105,16 +137,7 @@ func (c *Client) SaveDiaryEntry(req DiaryEntryRequest) error {
 		}
 		return c.wrapDebug(fmt.Errorf("save diary entry failed: status %d", resp.StatusCode))
 	}
-	if req.JSONResponse {
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if err != nil {
-			return c.wrapDebug(err)
-		}
-		if errMsg := diarySaveError(body); errMsg != "" {
-			return c.wrapDebug(fmt.Errorf("save diary entry failed: %s", errMsg))
-		}
-	}
-	return nil
+	return c.wrapDebug(errors.New("save diary entry failed: retry attempts exhausted"))
 }
 
 func diarySaveError(body []byte) string {

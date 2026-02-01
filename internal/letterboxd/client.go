@@ -200,7 +200,8 @@ func (c *Client) fetchDocumentStatus(url string, headers map[string]string) (*go
 		}
 		body := readBodySnippet(resp.Body)
 		resp.Body.Close()
-		if isCloudflareChallenge(resp.StatusCode, body) && attempt < maxAttempts {
+		isChallenge := isCloudflareChallenge(resp.StatusCode, body)
+		if isChallenge && attempt < maxAttempts {
 			if !useFallback {
 				useFallback = true
 				continue
@@ -208,7 +209,15 @@ func (c *Client) fetchDocumentStatus(url string, headers map[string]string) (*go
 			time.Sleep(cloudflareBackoff(attempt))
 			continue
 		}
-		if isCloudflareChallenge(resp.StatusCode, body) {
+		if attempt < maxAttempts && shouldRetryStatus(resp.StatusCode) {
+			if !useFallback {
+				useFallback = true
+				continue
+			}
+			time.Sleep(cloudflareBackoff(attempt))
+			continue
+		}
+		if isChallenge {
 			return nil, resp.StatusCode, c.cloudflareError(req, resp, body)
 		}
 		return nil, resp.StatusCode, c.httpStatusErrorWithBody(req, resp, body)
@@ -225,6 +234,15 @@ func isCloudflareChallenge(status int, body string) bool {
 		strings.Contains(lower, "cf-chl") ||
 		strings.Contains(lower, "attention required") ||
 		strings.Contains(lower, "cloudflare")
+}
+
+func shouldRetryStatus(status int) bool {
+	switch status {
+	case http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return true
+	default:
+		return false
+	}
 }
 
 func cloudflareBackoff(attempt int) time.Duration {
@@ -254,12 +272,21 @@ func (c *Client) fallbackClient() *http.Client {
 	if base == nil {
 		base = &http.Client{Timeout: 12 * time.Second}
 	}
-	transport := cloneTransport(base.Transport)
-	transport.ForceAttemptHTTP2 = false
-	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	transport := base.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	baseTransport, ok := transport.(*http.Transport)
+	if !ok {
+		c.fallbackHTTP = base
+		return c.fallbackHTTP
+	}
+	transportClone := baseTransport.Clone()
+	transportClone.ForceAttemptHTTP2 = false
+	transportClone.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 	c.fallbackHTTP = &http.Client{
 		Timeout:       base.Timeout,
-		Transport:     transport,
+		Transport:     transportClone,
 		CheckRedirect: base.CheckRedirect,
 		Jar:           base.Jar,
 	}
@@ -274,14 +301,23 @@ func (c *Client) forceHTTP2Client() *http.Client {
 	if base == nil {
 		base = &http.Client{Timeout: 12 * time.Second}
 	}
-	transport := cloneTransport(base.Transport)
-	transport.ForceAttemptHTTP2 = true
-	if err := http2.ConfigureTransport(transport); err != nil {
+	transport := base.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	baseTransport, ok := transport.(*http.Transport)
+	if !ok {
+		c.forceHTTP2HTTP = base
+		return c.forceHTTP2HTTP
+	}
+	transportClone := baseTransport.Clone()
+	transportClone.ForceAttemptHTTP2 = true
+	if err := http2.ConfigureTransport(transportClone); err != nil {
 		// If configuration fails, still keep ForceAttemptHTTP2 enabled.
 	}
 	c.forceHTTP2HTTP = &http.Client{
 		Timeout:       base.Timeout,
-		Transport:     transport,
+		Transport:     transportClone,
 		CheckRedirect: base.CheckRedirect,
 		Jar:           base.Jar,
 	}
