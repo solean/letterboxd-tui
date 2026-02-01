@@ -75,7 +75,14 @@ func (m Model) helpMap() helpKeyMap {
 		return newHelpKeyMap([]key.Binding{tabFields, enter, toggle, submit, back, helpToggle, keys.QuitAll})
 	case m.profileModal:
 		back := backHelp("b/esc/q", "b", "esc", "q")
-		return newHelpKeyMap([]key.Binding{navScroll, page, keys.JumpTop, keys.JumpBottom, keys.Open, back, helpToggle, keys.QuitAll})
+		nav := navScroll
+		short := []key.Binding{nav, page}
+		if m.modalProfileSelectableCount() > 0 {
+			nav = navMove
+			short = []key.Binding{nav, page, helpBinding(keys.Select, "enter", "view film")}
+		}
+		short = append(short, keys.JumpTop, keys.JumpBottom, keys.Open, back, helpToggle, keys.QuitAll)
+		return newHelpKeyMap(short)
 	case m.activeTab == tabFilm:
 		watchHint := keys.WatchlistAdd
 		if inWatchlist, ok := m.watchlistState(); ok && inWatchlist {

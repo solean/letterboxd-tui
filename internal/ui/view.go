@@ -411,7 +411,8 @@ func renderFilmModal(base string, m Model, theme themeStyles) string {
 func renderProfileModal(base string, m Model, theme themeStyles) string {
 	width, height := modalDimensions(m.width, m.height)
 	innerWidth := width - 4
-	if m.modalVP.View() == "" && renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, -1, innerWidth, theme) == "" {
+	selected := m.modalProfileSelectedIndex()
+	if m.modalVP.View() == "" && renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, selected, innerWidth, theme) == "" {
 		return base
 	}
 	innerHeight := height - 2
@@ -424,7 +425,7 @@ func renderProfileModal(base string, m Model, theme themeStyles) string {
 	vp.Height = bodyHeight
 	body := vp.View()
 	if body == "" {
-		vp.SetContent(renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, -1, innerWidth, theme))
+		vp.SetContent(renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, selected, innerWidth, theme))
 		body = vp.View()
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left, body, "", legend)

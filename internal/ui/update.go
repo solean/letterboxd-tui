@@ -127,6 +127,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 				m.resetTabPosition()
+				if m.filmReturnProfileModal {
+					m.profileModal = true
+					m.modalVP.YOffset = m.modalReturnYOffset
+					m.filmReturnProfileModal = false
+					m.refreshModalViewport()
+				}
 			} else if m.profileModal {
 				m.profileModal = false
 			}
@@ -162,7 +168,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetTabPosition()
 			return m, m.maybeFillCmd()
 		case key.Matches(ev, m.keys.Down):
-			if m.modalOpen() {
+			if m.profileModal {
+				if m.modalProfileSelectableCount() == 0 {
+					m.modalVP.LineDown(1)
+				} else {
+					m.moveModalProfileSelection(1)
+					m.syncModalViewportToSelection()
+					m.refreshModalViewport()
+				}
+			} else if m.modalOpen() {
 				m.modalVP.LineDown(1)
 				if m.activeTab == tabFilm {
 					return m, m.maybeLoadMoreReviewsCmd()
@@ -180,7 +194,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.Up):
-			if m.modalOpen() {
+			if m.profileModal {
+				if m.modalProfileSelectableCount() == 0 {
+					m.modalVP.LineUp(1)
+				} else {
+					m.moveModalProfileSelection(-1)
+					m.syncModalViewportToSelection()
+					m.refreshModalViewport()
+				}
+			} else if m.modalOpen() {
 				m.modalVP.LineUp(1)
 			} else if m.activeTab == tabProfile {
 				if m.profileSelectableCount() == 0 {
@@ -195,7 +217,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.PageDown):
-			if m.modalOpen() {
+			if m.profileModal {
+				if m.modalProfileSelectableCount() == 0 {
+					m.modalVP.ViewDown()
+				} else {
+					m.pageModalProfileSelection(1)
+					m.syncModalViewportToSelection()
+					m.refreshModalViewport()
+				}
+			} else if m.modalOpen() {
 				m.modalVP.ViewDown()
 				if m.activeTab == tabFilm {
 					return m, m.maybeLoadMoreReviewsCmd()
@@ -213,7 +243,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.maybeLoadMoreCmd()
 			}
 		case key.Matches(ev, m.keys.PageUp):
-			if m.modalOpen() {
+			if m.profileModal {
+				if m.modalProfileSelectableCount() == 0 {
+					m.modalVP.ViewUp()
+				} else {
+					m.pageModalProfileSelection(-1)
+					m.syncModalViewportToSelection()
+					m.refreshModalViewport()
+				}
+			} else if m.modalOpen() {
 				m.modalVP.ViewUp()
 			} else if m.activeTab == tabProfile {
 				if m.profileSelectableCount() == 0 {
@@ -252,6 +290,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, fetchWatchlistCmd(m.client, m.username, 1, m.watchlistSortParam())
 			}
 		case key.Matches(ev, m.keys.Select):
+			if m.profileModal {
+				m = m.openSelectedModalFilm()
+				if m.activeTab == tabFilm {
+					return m, fetchFilmCmd(m.client, m.film.URL, m.username)
+				}
+				return m, nil
+			}
 			if m.activeTab == tabFollowing {
 				m = m.openSelectedProfile()
 				return m, fetchProfileModalCmd(m.client, m.modalUser)
@@ -324,6 +369,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == tabFilm {
 				m.activeTab = m.filmReturn
 				m.resetTabPosition()
+				if m.filmReturnProfileModal {
+					m.profileModal = true
+					m.modalVP.YOffset = m.modalReturnYOffset
+					m.filmReturnProfileModal = false
+					m.refreshModalViewport()
+				}
 			} else if m.profileModal {
 				m.profileModal = false
 			}
@@ -333,6 +384,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.modalProfile = ev.profile
 			m.modalProfileErr = m.logAndSanitize("profile modal fetch", ev.err)
 			m.modalLoading = false
+			m.modalProfileList.selected = 0
+			m.modalVP.YOffset = 0
 			m.refreshModalViewport()
 		} else {
 			m.profile = ev.profile
@@ -521,7 +574,8 @@ func (m *Model) refreshModalViewport() {
 	m.modalVP.Height = bodyHeight
 
 	if m.profileModal {
-		content := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, -1, innerWidth, theme)
+		selected := m.modalProfileSelectedIndex()
+		content := renderProfileContent(m.modalProfile, m.modalProfileErr, m.modalLoading, m.modalUser, nil, selected, innerWidth, theme)
 		m.modalVP.SetContent(content)
 		return
 	}

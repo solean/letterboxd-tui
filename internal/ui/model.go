@@ -74,6 +74,7 @@ type Model struct {
 	modalLoading             bool
 	searchLoading            bool
 	profileList              listState
+	modalProfileList         listState
 	diaryList                listState
 	watchList                listState
 	actList                  listState
@@ -96,6 +97,8 @@ type Model struct {
 	viewport                 viewport.Model
 	modalVP                  viewport.Model
 	filmReturn               tab
+	filmReturnProfileModal   bool
+	modalReturnYOffset       int
 	profileModal             bool
 	modalUser                string
 	logModal                 bool
@@ -198,6 +201,18 @@ func (m Model) profileSelectableCount() int {
 	return len(profileSelectionEntries(m.profile))
 }
 
+func (m Model) modalProfileSelectableCount() int {
+	return len(profileSelectionEntries(m.modalProfile))
+}
+
+func (m Model) modalProfileSelectedIndex() int {
+	count := m.modalProfileSelectableCount()
+	if count == 0 {
+		return -1
+	}
+	return clamp(m.modalProfileList.selected, 0, count-1)
+}
+
 func (m Model) hasCookie() bool {
 	if m.client == nil {
 		return false
@@ -275,6 +290,14 @@ func (m *Model) moveSelection(delta int) {
 	}
 }
 
+func (m *Model) moveModalProfileSelection(delta int) {
+	count := m.modalProfileSelectableCount()
+	if count == 0 {
+		return
+	}
+	m.modalProfileList.selected = clamp(m.modalProfileList.selected+delta, 0, count-1)
+}
+
 func (m *Model) resetTabPosition() {
 	if m.activeTab == m.lastTab {
 		return
@@ -340,6 +363,15 @@ func (m *Model) pageSelection(dir int) {
 	}
 }
 
+func (m *Model) pageModalProfileSelection(dir int) {
+	step := max(1, m.modalVP.Height-1)
+	count := m.modalProfileSelectableCount()
+	if count == 0 {
+		return
+	}
+	m.modalProfileList.selected = clamp(m.modalProfileList.selected+dir*step, 0, count-1)
+}
+
 func (m *Model) syncViewportToSelection() {
 	var total, selected int
 	switch m.activeTab {
@@ -388,8 +420,44 @@ func (m *Model) syncViewportToSelection() {
 	}
 }
 
+func (m *Model) syncModalViewportToSelection() {
+	if !m.profileModal {
+		return
+	}
+	entries := profileSelectionEntries(m.modalProfile)
+	if len(entries) == 0 {
+		return
+	}
+	selected := clamp(m.modalProfileList.selected, 0, len(entries)-1)
+	selectedLine := entries[selected].line
+	total := profileLineCount(m.modalProfile)
+	if total == 0 || m.modalVP.Height <= 0 {
+		return
+	}
+	top := m.modalVP.YOffset
+	bottom := top + m.modalVP.Height - 1
+	if selectedLine < top {
+		m.modalVP.YOffset = selectedLine
+	} else if selectedLine > bottom {
+		m.modalVP.YOffset = selectedLine - m.modalVP.Height + 1
+	}
+	if m.modalVP.YOffset < 0 {
+		m.modalVP.YOffset = 0
+	}
+	maxOffset := max(0, total-m.modalVP.Height)
+	if m.modalVP.YOffset > maxOffset {
+		m.modalVP.YOffset = maxOffset
+	}
+}
+
 func (m *Model) jumpToTop() {
 	if m.profileModal || m.activeTab == tabFilm {
+		if m.profileModal && m.modalProfileSelectableCount() > 0 {
+			m.modalProfileList.selected = 0
+			m.syncModalViewportToSelection()
+			m.refreshModalViewport()
+			return
+		}
 		m.modalVP.GotoTop()
 		return
 	}
@@ -438,6 +506,15 @@ func (m *Model) jumpToTop() {
 
 func (m *Model) jumpToBottom() {
 	if m.profileModal || m.activeTab == tabFilm {
+		if m.profileModal {
+			count := m.modalProfileSelectableCount()
+			if count > 0 {
+				m.modalProfileList.selected = count - 1
+				m.syncModalViewportToSelection()
+				m.refreshModalViewport()
+				return
+			}
+		}
 		m.modalVP.GotoBottom()
 		return
 	}
@@ -769,8 +846,48 @@ func (m Model) openSelectedProfile() Model {
 	m.modalProfile = letterboxd.Profile{}
 	m.modalProfileErr = nil
 	m.modalLoading = true
+	m.modalProfileList.selected = 0
 	m.profileModal = true
 	m.modalVP.YOffset = 0
+	m.refreshModalViewport()
+	return m
+}
+
+func (m Model) openSelectedModalFilm() Model {
+	entries := profileSelectionEntries(m.modalProfile)
+	if len(entries) == 0 {
+		return m
+	}
+	selected := clamp(m.modalProfileList.selected, 0, len(entries)-1)
+	filmURL := letterboxd.NormalizeFilmURL(entries[selected].filmURL)
+	if filmURL == "" {
+		return m
+	}
+	m.film = letterboxd.Film{URL: filmURL}
+	m.filmErr = nil
+	m.popReviews = nil
+	m.friendReviews = nil
+	m.popReviewsPage = 0
+	m.friendReviewsPage = 0
+	m.popReviewsDone = false
+	m.friendReviewsDone = false
+	m.popReviewsLoadingMore = false
+	m.friendReviewsLoadingMore = false
+	m.popReviewsMoreErr = nil
+	m.friendReviewsMoreErr = nil
+	m.popReviewsErr = nil
+	m.friendReviewsErr = nil
+	m.watchlistPending = false
+	m.watchlistStatus = ""
+	m.filmReturn = m.activeTab
+	m.filmReturnProfileModal = true
+	m.modalReturnYOffset = m.modalVP.YOffset
+	m.activeTab = tabFilm
+	m.profileModal = false
+	m.loading = true
+	m.viewport.YOffset = 0
+	m.modalVP.YOffset = 0
+	m.modalVP.SetContent("")
 	m.refreshModalViewport()
 	return m
 }
@@ -832,6 +949,8 @@ func (m Model) openSelectedFilm() Model {
 	m.watchlistPending = false
 	m.watchlistStatus = ""
 	m.filmReturn = m.activeTab
+	m.filmReturnProfileModal = false
+	m.modalReturnYOffset = 0
 	m.activeTab = tabFilm
 	m.loading = true
 	m.viewport.YOffset = 0
