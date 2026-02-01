@@ -23,7 +23,7 @@ func main() {
 	var noCookieFlag bool
 	var versionFlag bool
 	var debugFlag bool
-	flag.StringVar(&userFlag, "user", "", "Letterboxd username")
+	flag.StringVar(&userFlag, "user", "", "Letterboxd username (override config)")
 	flag.BoolVar(&setupFlag, "setup", false, "Run first-time setup")
 	flag.BoolVar(&noCookieFlag, "no-cookie", false, "Run without a stored cookie")
 	flag.BoolVar(&versionFlag, "version", false, "Print version and exit")
@@ -101,7 +101,7 @@ func main() {
 		}
 	}
 	if strings.TrimSpace(state.username) == "" {
-		fmt.Fprintln(os.Stderr, "missing Letterboxd username (use -user or set LETTERBOXD_USER)")
+		fmt.Fprintln(os.Stderr, "missing Letterboxd username (run with -setup or pass -user)")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -144,14 +144,9 @@ func resolveStartup(userFlag string) (startupState, error) {
 	}
 	state.config = cfg
 
-	envUser := strings.TrimSpace(os.Getenv("LETTERBOXD_USER"))
 	username := strings.TrimSpace(userFlag)
 	if username == "" {
-		if envUser != "" {
-			username = envUser
-		} else if cfg.Username != "" {
-			username = cfg.Username
-		}
+		username = strings.TrimSpace(cfg.Username)
 	}
 
 	cookie := strings.TrimSpace(cfg.Cookie)
