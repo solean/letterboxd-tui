@@ -81,6 +81,20 @@ func TestOpenSelectedFilmFromProfile(t *testing.T) {
 	}
 }
 
+func TestOpenSelectedModalFilm(t *testing.T) {
+	m := NewModel("jane", nil)
+	m.activeTab = tabFollowing
+	m.profileModal = true
+	m.modalProfile = letterboxd.Profile{
+		Favorites: []letterboxd.FavoriteFilm{{FilmURL: letterboxd.BaseURL + "/film/inception/"}},
+	}
+	m.modalProfileList.selected = 0
+	m = m.openSelectedModalFilm()
+	if m.activeTab != tabFilm || m.film.URL == "" || m.profileModal {
+		t.Fatalf("expected film modal from profile modal, got %+v", m)
+	}
+}
+
 func TestGoBackProfile(t *testing.T) {
 	m := NewModel("jane", nil)
 	m.profileStack = []string{"alice"}
