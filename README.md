@@ -50,27 +50,14 @@ You have a few options depending on how you want to run the app:
 go install github.com/solean/letterboxd-tui/cmd/letterboxd@latest
 ```
 
-2. Install with Homebrew (macOS only).
-
-```bash
-brew tap solean/homebrew-letterboxd
-brew install --cask letterboxd
-```
-
-If macOS marks the app as quarantined, you can remove the quarantine attribute. Only do this if you trust the source:
-
-```bash
-xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/letterboxd"
-```
-
-3. Download the source and build it yourself.
+2. Download the source and build it yourself.
 
 ```bash
 git clone https://github.com/solean/letterboxd-tui.git
 cd letterboxd-tui
 ```
 
-4. If there are prebuilt binaries available, grab them from the repository releases page.
+3. If there are prebuilt binaries available, grab them from the repository releases page.
 
 ## Build
 
